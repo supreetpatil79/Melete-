@@ -36,4 +36,19 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    target: "es2020",
+    sourcemap: mode === "development",
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@monaco-editor") || id.includes("monaco-editor")) return "editor-vendor";
+          if (id.includes("recharts")) return "charts-vendor";
+          return "vendor";
+        },
+      },
+    },
+  },
 }));

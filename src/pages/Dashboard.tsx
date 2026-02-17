@@ -40,6 +40,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [showBranchDialog, setShowBranchDialog] = useState(false);
   const [insight, setInsight] = useState<StoredLearnerInsight | null>(null);
+  const [isInsightLoading, setIsInsightLoading] = useState(false);
   const [videos, setVideos] = useState<LearningVideo[]>([]);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [videoQuery, setVideoQuery] = useState("");
@@ -49,6 +50,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) {
       setInsight(null);
+      setIsInsightLoading(false);
       setVideos([]);
       setSelectedVideoId(null);
       setVideoQuery("");
@@ -61,13 +63,20 @@ const Dashboard = () => {
     if (cachedInsight) {
       setInsight(cachedInsight);
     }
+    setIsInsightLoading(!cachedInsight);
 
     let isCancelled = false;
 
     const hydrateAiInsight = async () => {
-      const generated = await ensureLearnerInsight(user, dnaSnapshot);
-      if (isCancelled) return;
-      setInsight(generated);
+      try {
+        const generated = await ensureLearnerInsight(user, dnaSnapshot);
+        if (isCancelled) return;
+        setInsight(generated);
+      } finally {
+        if (!isCancelled) {
+          setIsInsightLoading(false);
+        }
+      }
     };
 
     const hydrateVideos = async () => {
@@ -219,67 +228,99 @@ const Dashboard = () => {
           </Card>
         </motion.div>
 
-        {insight && (
+        {(isInsightLoading || insight) && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.16 }}
             className="mb-12 grid gap-4 lg:grid-cols-3"
           >
-            <Card className="border border-border/50 bg-gradient-card p-6 lg:col-span-2">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                <Sparkles className="h-3.5 w-3.5" />
-                AI Learner Profile
-              </div>
-              <h2 className="text-2xl font-bold text-foreground">{insight.headline}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{insight.conciseBio}</p>
-              <p className="mt-3 text-xs font-medium text-primary">{insight.signature}</p>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Strength Signals
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {insight.strengths.map((entry) => (
-                      <span
-                        key={entry}
-                        className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-xs text-green-700"
-                      >
-                        {entry}
-                      </span>
-                    ))}
+            {isInsightLoading && !insight ? (
+              <>
+                <Card className="border border-border/50 bg-gradient-card p-6 lg:col-span-2">
+                  <div className="animate-pulse space-y-4">
+                    <div className="h-6 w-44 rounded-md bg-muted" />
+                    <div className="h-8 w-3/4 rounded-md bg-muted" />
+                    <div className="h-4 w-full rounded-md bg-muted" />
+                    <div className="h-4 w-4/5 rounded-md bg-muted" />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="h-4 w-32 rounded-md bg-muted" />
+                        <div className="h-8 w-full rounded-md bg-muted" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-4 w-32 rounded-md bg-muted" />
+                        <div className="h-8 w-full rounded-md bg-muted" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Focus Targets
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {insight.focusAreas.map((entry) => (
-                      <span
-                        key={entry}
-                        className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-700"
-                      >
-                        {entry}
-                      </span>
-                    ))}
+                </Card>
+                <Card className="border border-border/50 bg-gradient-card p-6">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-5 w-40 rounded-md bg-muted" />
+                    <div className="h-4 w-full rounded-md bg-muted" />
+                    <div className="h-4 w-5/6 rounded-md bg-muted" />
                   </div>
-                </div>
-              </div>
-            </Card>
+                </Card>
+              </>
+            ) : (
+              <>
+                <Card className="border border-border/50 bg-gradient-card p-6 lg:col-span-2">
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    AI Learner Profile
+                  </div>
+                  <h2 className="text-2xl font-bold text-foreground">{insight?.headline}</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">{insight?.conciseBio}</p>
+                  <p className="mt-3 text-xs font-medium text-primary">{insight?.signature}</p>
 
-            <Card className="border border-border/50 bg-gradient-card p-6">
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Brain className="h-4 w-4 text-primary" />
-                Next Best Move
-              </div>
-              <p className="text-sm text-muted-foreground">{insight.nextAction}</p>
-              <p className="mt-5 text-xs text-muted-foreground">
-                Profile source: {insight.source === "ai" ? "AI model" : "local fallback"}
-              </p>
-            </Card>
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Strength Signals
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {insight?.strengths.map((entry) => (
+                          <span
+                            key={entry}
+                            className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-xs text-green-700"
+                          >
+                            {entry}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Focus Targets
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {insight?.focusAreas.map((entry) => (
+                          <span
+                            key={entry}
+                            className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-700"
+                          >
+                            {entry}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border border-border/50 bg-gradient-card p-6">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Brain className="h-4 w-4 text-primary" />
+                    Next Best Move
+                  </div>
+                  <p className="text-sm text-muted-foreground">{insight?.nextAction}</p>
+                  <p className="mt-5 text-xs text-muted-foreground">
+                    Profile source: {insight?.source === "ai" ? "AI model" : "local fallback"}
+                  </p>
+                </Card>
+              </>
+            )}
           </motion.div>
         )}
 
