@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, Clock, LayoutDashboard, Loader2, Newspaper } from "lucide-react";
+import { BookOpen, Clock, History, LayoutDashboard, Loader2, Newspaper, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { searchCatalog } from "@/services/searchService";
+import {
+  getSearchSuggestions,
+  rememberSearchQuery,
+  type SearchHistoryEntry,
+} from "@/services/searchHistoryService";
 import type { SearchHit } from "@/shared/catalogSearch";
 import {
   CommandDialog,
@@ -45,7 +50,10 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
       setIsLoading(false);
       return;
     }
+  }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
     const normalizedQuery = query.trim();
     if (normalizedQuery.length < MIN_SEARCH_LENGTH) {
       setResults([]);
@@ -85,16 +93,35 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
     };
   }, [open, query, user?.branch]);
 
+  const suggestions = useMemo(
+    () => getSearchSuggestions(query, query.trim().length < MIN_SEARCH_LENGTH ? 6 : 4),
+    [query],
+  );
+
   const groupedResults = useMemo(() => {
     const tracks = results.filter((result) => result.type === "track");
     const courses = results.filter((result) => result.type === "course");
     return { tracks, courses };
   }, [results]);
 
-  const handleSelectResult = (result: SearchHit) => {
+  const navigateToPath = (path: string) => {
     onOpenChange(false);
     setQuery("");
-    navigate(pathForResult(result));
+    navigate(path);
+  };
+
+  const handleSelectSuggestion = (entry: SearchHistoryEntry) => {
+    setQuery(entry.query);
+  };
+
+  const handleSelectResult = (result: SearchHit) => {
+    const destination = pathForResult(result);
+    const historyQuery = query.trim() || result.title;
+    rememberSearchQuery(historyQuery, {
+      path: destination,
+      title: result.title,
+    });
+    navigateToPath(destination);
   };
 
   return (
@@ -105,13 +132,28 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
         placeholder="Search tracks, courses, and topics..."
       />
       <CommandList>
+        {query.trim().length < MIN_SEARCH_LENGTH && suggestions.length > 0 && (
+          <CommandGroup heading="Recent searches">
+            {suggestions.map((entry) => (
+              <CommandItem
+                key={`${entry.query}-${entry.usedAt}`}
+                value={`history ${entry.query}`}
+                onSelect={() => handleSelectSuggestion(entry)}
+              >
+                <History className="mr-2 h-4 w-4" />
+                <span className="truncate">{entry.query}</span>
+                <CommandShortcut>{entry.count}x</CommandShortcut>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
         {query.trim().length < MIN_SEARCH_LENGTH && (
           <CommandGroup heading="Quick links">
             <CommandItem
               value="whats up in tech page"
               onSelect={() => {
-                onOpenChange(false);
-                navigate("/whats-up-in-tech");
+                navigateToPath("/whats-up-in-tech");
               }}
             >
               <Newspaper className="mr-2 h-4 w-4" />
@@ -121,8 +163,7 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
             <CommandItem
               value="tracks page"
               onSelect={() => {
-                onOpenChange(false);
-                navigate("/tracks");
+                navigateToPath("/tracks");
               }}
             >
               <LayoutDashboard className="mr-2 h-4 w-4" />
@@ -132,13 +173,22 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
             <CommandItem
               value="courses page"
               onSelect={() => {
-                onOpenChange(false);
-                navigate("/courses");
+                navigateToPath("/courses");
               }}
             >
               <BookOpen className="mr-2 h-4 w-4" />
               Courses
               <CommandShortcut>Browse</CommandShortcut>
+            </CommandItem>
+            <CommandItem
+              value="practice page"
+              onSelect={() => {
+                navigateToPath("/practice");
+              }}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Practice
+              <CommandShortcut>Build</CommandShortcut>
             </CommandItem>
           </CommandGroup>
         )}
@@ -151,9 +201,25 @@ const GlobalSearch = ({ open, onOpenChange }: GlobalSearchProps) => {
         )}
 
         {!isLoading && query.trim().length >= MIN_SEARCH_LENGTH && results.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No results found. Try a broader query.
-          </div>
+          <>
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+              No results found. Try a broader query.
+            </div>
+            {suggestions.length > 0 && (
+              <CommandGroup heading="Try from your history">
+                {suggestions.map((entry) => (
+                  <CommandItem
+                    key={`suggestion-${entry.query}-${entry.usedAt}`}
+                    value={`suggestion ${entry.query}`}
+                    onSelect={() => handleSelectSuggestion(entry)}
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    {entry.query}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </>
         )}
 
         {!isLoading && query.trim().length >= MIN_SEARCH_LENGTH && results.length > 0 && (

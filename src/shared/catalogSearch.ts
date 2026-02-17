@@ -70,6 +70,18 @@ const STOP_WORDS = new Set([
 const TOKEN_PATTERN = /[^a-z0-9+]+/g;
 const BM25_K1 = 1.25;
 const BM25_B = 0.75;
+const QUERY_SYNONYMS: Record<string, string[]> = {
+  js: ["javascript", "node", "nodejs"],
+  ts: ["typescript"],
+  py: ["python"],
+  ml: ["machine", "learning"],
+  ai: ["artificial", "intelligence"],
+  dsa: ["data", "structures", "algorithms"],
+  devops: ["docker", "kubernetes", "ci", "cd"],
+  backend: ["api", "server", "database"],
+  frontend: ["ui", "react", "web"],
+  uiux: ["ui", "ux", "design"],
+};
 
 interface SearchDocument {
   key: string;
@@ -219,6 +231,12 @@ interface AlternativeToken {
   qualityBoost: number;
 }
 
+interface ExpandedQueryToken {
+  token: string;
+  source: string;
+  tokenBoost: number;
+}
+
 export class CatalogSearchEngine {
   private readonly documents = new Map<string, SearchDocument>();
   private readonly postings = new Map<string, Map<string, number>>();
@@ -272,12 +290,15 @@ export class CatalogSearchEngine {
     if (queryTokens.length === 0) {
       queryTokens = query.split(" ").filter(Boolean);
     }
+    const expandedTokens = this.expandQueryTokens(queryTokens);
+    const phraseQuery = queryTokens.join(" ");
+    const compactQuery = query.replace(/\s+/g, "");
 
     const scoreByDocument = new Map<string, number>();
     const tokenCoverage = new Map<string, Set<string>>();
 
-    for (const queryToken of queryTokens) {
-      const alternatives = this.getAlternatives(queryToken);
+    for (const queryToken of expandedTokens) {
+      const alternatives = this.getAlternatives(queryToken.token);
       for (const alternative of alternatives) {
         const tokenPostings = this.postings.get(alternative.token);
         if (!tokenPostings) continue;
@@ -296,14 +317,14 @@ export class CatalogSearchEngine {
             BM25_K1 * (1 - BM25_B + BM25_B * (documentLength / this.averageLength));
 
           const bm25 = idf * ((termFrequency * (BM25_K1 + 1)) / denominator);
-          const boostedScore = bm25 * alternative.qualityBoost;
+          const boostedScore = bm25 * alternative.qualityBoost * queryToken.tokenBoost;
 
           scoreByDocument.set(documentKey, (scoreByDocument.get(documentKey) ?? 0) + boostedScore);
 
           if (!tokenCoverage.has(documentKey)) {
             tokenCoverage.set(documentKey, new Set());
           }
-          tokenCoverage.get(documentKey)?.add(queryToken);
+          tokenCoverage.get(documentKey)?.add(queryToken.source);
         }
       }
     }
@@ -321,6 +342,20 @@ export class CatalogSearchEngine {
       if (document.normalizedTitle.includes(query)) score += 2.6;
       if (document.normalizedDescription.includes(query)) score += 1.4;
       if (document.normalizedTrackTitle.includes(query) && document.type === "course") score += 1.2;
+
+      if (phraseQuery.length > 3 && queryTokens.length > 1) {
+        if (document.normalizedTitle.includes(phraseQuery)) score += 3.2;
+        if (document.normalizedDescription.includes(phraseQuery)) score += 1.8;
+        if (document.normalizedTrackTitle.includes(phraseQuery)) score += 1.3;
+      }
+
+      if (compactQuery.length >= 2 && compactQuery.length <= 8) {
+        const titleAcronym = this.acronymFor(document.normalizedTitle);
+        const trackAcronym = this.acronymFor(document.normalizedTrackTitle);
+        if (titleAcronym.startsWith(compactQuery)) score += 1.9;
+        if (trackAcronym.startsWith(compactQuery) && document.type === "course") score += 1.2;
+      }
+
       if (document.type === "track") score += 0.25;
       if (requestedBranch && document.branches.includes(requestedBranch)) score += 0.4;
 
@@ -386,6 +421,49 @@ export class CatalogSearchEngine {
     for (const token of tokenize(text)) {
       target.set(token, (target.get(token) ?? 0) + weight);
     }
+  }
+
+  private expandQueryTokens(tokens: string[]): ExpandedQueryToken[] {
+    const expanded: ExpandedQueryToken[] = [];
+    const seen = new Set<string>();
+
+    for (const token of tokens) {
+      const baseKey = `${token}|${token}`;
+      if (!seen.has(baseKey)) {
+        expanded.push({
+          token,
+          source: token,
+          tokenBoost: 1,
+        });
+        seen.add(baseKey);
+      }
+
+      const synonyms = QUERY_SYNONYMS[token];
+      if (!synonyms) continue;
+      for (const synonym of synonyms) {
+        const normalizedSynonym = normalizeText(synonym);
+        if (!normalizedSynonym) continue;
+        const expandedTokens = tokenize(normalizedSynonym);
+        for (const expandedToken of expandedTokens) {
+          const key = `${token}|${expandedToken}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          expanded.push({
+            token: expandedToken,
+            source: token,
+            tokenBoost: 0.66,
+          });
+        }
+      }
+    }
+
+    return expanded;
+  }
+
+  private acronymFor(value: string): string {
+    const parts = value.split(" ").filter(Boolean);
+    if (parts.length === 0) return "";
+    return parts.map((part) => part[0]).join("");
   }
 
   private getAlternatives(queryToken: string): AlternativeToken[] {

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
 import { Play, Check, X, Copy, RefreshCw, Lightbulb, Send, Loader2, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 import { useAuth } from "@/context/AuthContext";
+import { safeStorage } from "@/lib/safeStorage";
 import { getLearnerDnaSummary } from "@/services/learnerProfileService";
 import {
   Select,
@@ -62,6 +64,8 @@ const difficultyColor = {
   Medium: "text-yellow-600",
   Hard: "text-red-600",
 } as const;
+
+const DRAFT_STORAGE_PREFIX = "learnpath_practice_draft_";
 
 const normalizeLanguageName = (value: string): string => value.toLowerCase().trim();
 
@@ -199,6 +203,7 @@ const PracticeProblem = ({
   onExecutionComplete,
 }: PracticeProblemProps) => {
   const { user } = useAuth();
+  const { resolvedTheme } = useTheme();
   const [code, setCode] = useState(template);
   const [testResults, setTestResults] = useState<ExecuteTestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -211,6 +216,9 @@ const PracticeProblem = ({
   const [selectedLanguageId, setSelectedLanguageId] = useState<number | null>(null);
   const [isLoadingLanguages, setIsLoadingLanguages] = useState(true);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [restoredFromDraft, setRestoredFromDraft] = useState(false);
+  const [runAttempts, setRunAttempts] = useState(0);
 
   useEffect(() => {
     let isCancelled = false;
@@ -226,9 +234,6 @@ const PracticeProblem = ({
         setLanguages(availableLanguages);
         const defaultLanguageId = resolveDefaultLanguageId(availableLanguages, language);
         setSelectedLanguageId(defaultLanguageId);
-
-        const defaultLanguage = availableLanguages.find((item) => item.id === defaultLanguageId);
-        setCode(templateForLanguage(defaultLanguage?.name, template));
       } catch (error) {
         if (isCancelled) return;
         const message =
@@ -252,8 +257,66 @@ const PracticeProblem = ({
     [languages, selectedLanguageId],
   );
   const monacoLanguage = getMonacoLanguage(selectedLanguage?.name);
+  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+  const draftStorageKey = useMemo(
+    () =>
+      selectedLanguageId
+        ? `${DRAFT_STORAGE_PREFIX}${id}_${selectedLanguageId}`
+        : null,
+    [id, selectedLanguageId],
+  );
 
-  const handleRunTests = async () => {
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    const saved = safeStorage.getItem(draftStorageKey);
+    if (!saved) {
+      setCode(templateForLanguage(selectedLanguage?.name, template));
+      setRestoredFromDraft(false);
+      setLastSavedAt(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as {
+        code?: string;
+        updatedAt?: string;
+      };
+      if (typeof parsed.code === "string") {
+        setCode(parsed.code);
+        setRestoredFromDraft(true);
+        setLastSavedAt(typeof parsed.updatedAt === "string" ? parsed.updatedAt : null);
+        return;
+      }
+    } catch {
+      // Ignore malformed draft payloads.
+    }
+
+    setCode(templateForLanguage(selectedLanguage?.name, template));
+    setRestoredFromDraft(false);
+    setLastSavedAt(null);
+  }, [draftStorageKey, selectedLanguage?.name, template]);
+
+  useEffect(() => {
+    if (!draftStorageKey) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const updatedAt = new Date().toISOString();
+      safeStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({
+          code,
+          updatedAt,
+        }),
+      );
+      setLastSavedAt(updatedAt);
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [code, draftStorageKey]);
+
+  const handleRunTests = useCallback(async () => {
     if (!selectedLanguageId) {
       toast.error("Choose a language runtime first");
       return;
@@ -264,6 +327,7 @@ const PracticeProblem = ({
     setGapAnalysis(null);
     setActiveHint(null);
     setShowHint(false);
+    setRunAttempts((previous) => previous + 1);
 
     try {
       const response = await executeCode({
@@ -344,7 +408,43 @@ const PracticeProblem = ({
     } finally {
       setIsRunning(false);
     }
-  };
+  }, [
+    code,
+    id,
+    language,
+    onExecutionComplete,
+    selectedLanguage?.name,
+    selectedLanguageId,
+    testCases,
+    title,
+    topicId,
+    topicTitle,
+    user,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const withinEditor = Boolean(target?.closest(".monaco-editor"));
+      if (!withinEditor) {
+        return;
+      }
+
+      event.preventDefault();
+      if (!isRunning && selectedLanguageId) {
+        void handleRunTests();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [handleRunTests, isRunning, selectedLanguageId]);
 
   const fetchAdaptiveHint = async () => {
     const failedResult = testResults.find((result) => !result.passed);
@@ -422,6 +522,12 @@ const PracticeProblem = ({
     setGapAnalysis(null);
     setRuntimeError(null);
     setCode(templateForLanguage(selectedLanguage?.name, template));
+    setRunAttempts(0);
+    if (draftStorageKey) {
+      safeStorage.removeItem(draftStorageKey);
+      setRestoredFromDraft(false);
+      setLastSavedAt(null);
+    }
   };
 
   const handleCopyTemplate = async () => {
@@ -432,17 +538,22 @@ const PracticeProblem = ({
   const handleLanguageChange = (value: string) => {
     const languageId = Number(value);
     setSelectedLanguageId(languageId);
-    const nextLanguage = languages.find((item) => item.id === languageId);
-    setCode(templateForLanguage(nextLanguage?.name, template));
     setTestResults([]);
     setShowHint(false);
     setActiveHint(null);
     setGapAnalysis(null);
     setRuntimeError(null);
+    setRunAttempts(0);
   };
 
   const passedTests = testResults.filter((result) => result.passed).length;
   const allTestsPassed = testResults.length > 0 && passedTests === testResults.length;
+  const lastSavedLabel = lastSavedAt
+    ? new Date(lastSavedAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -586,11 +697,17 @@ const PracticeProblem = ({
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <span>{restoredFromDraft ? "Draft restored" : "Fresh template loaded"}</span>
+              <span>{lastSavedLabel ? `Autosaved at ${lastSavedLabel}` : "Autosave enabled"}</span>
+              <span>Run with Cmd/Ctrl + Enter</span>
+            </div>
+
             <div className="overflow-hidden rounded-lg border border-border">
               <Editor
                 height="340px"
                 language={monacoLanguage}
-                theme="vs-dark"
+                theme={editorTheme}
                 value={code}
                 onChange={(value) => setCode(value ?? "")}
                 options={{
@@ -627,6 +744,9 @@ const PracticeProblem = ({
                 </>
               )}
             </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Attempts this session: {runAttempts}
+            </p>
           </Card>
         </div>
       </div>

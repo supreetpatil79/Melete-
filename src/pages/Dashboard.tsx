@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getTracksByBranch } from "../services/trackService";
 import { branches } from "../data/branches";
-import { getLearnerDnaSummary } from "@/services/learnerProfileService";
+import { getLearnerDnaSummary, getLearnerProfile } from "@/services/learnerProfileService";
 import {
   ensureLearnerInsight,
   getStoredLearnerInsight,
@@ -18,8 +18,11 @@ import BranchSelector from "../components/BranchSelector";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { missionCompletionPercent, getTodayMission } from "@/services/missionEngine";
 import { useEffect, useState } from "react";
 import {
+  ArrowRight,
   Brain,
   Code2,
   ExternalLink,
@@ -154,6 +157,9 @@ const Dashboard = () => {
   const tracksByBranch = getTracksByBranch(user.branch);
   const currentBranch = branches.find((b) => b.id === user.branch);
   const learnerDna = getLearnerDnaSummary(user.id, user.branch);
+  const recentSession = getLearnerProfile(user.id, user.branch).recentSessions[0] ?? null;
+  const todayMission = getTodayMission(user.id, user.branch);
+  const missionProgress = missionCompletionPercent(todayMission);
   const selectedVideo =
     videos.find((video) => video.videoId === selectedVideoId) ?? videos[0] ?? null;
 
@@ -180,6 +186,54 @@ const Dashboard = () => {
               Start Today Mission
             </Button>
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+          className="mb-8 grid gap-4 lg:grid-cols-[1.15fr,1fr]"
+        >
+          <Card className="border border-border/50 bg-gradient-card p-6">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Quick Resume</p>
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
+              {recentSession ? "Continue from your latest practice" : "Start your first guided practice"}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {recentSession
+                ? `${recentSession.problemTitle} • ${recentSession.passedTests}/${recentSession.totalTests} tests passed`
+                : "Pick a recommended topic and begin with adaptive hints and diagnostics."}
+            </p>
+            <Button
+              className="mt-4 gap-2"
+              onClick={() =>
+                navigate(
+                  recentSession?.topicId
+                    ? `/practice?topic=${encodeURIComponent(recentSession.topicId)}`
+                    : "/practice",
+                )
+              }
+            >
+              Open Practice
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Card>
+
+          <Card className="border border-border/50 bg-gradient-card p-6">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-foreground">Today mission progress</span>
+              <span className="text-muted-foreground">{missionProgress}%</span>
+            </div>
+            <Progress value={missionProgress} />
+            <p className="mt-3 text-sm text-muted-foreground">
+              {todayMission.tasks.filter((task) => task.status === "completed").length}/
+              {todayMission.tasks.length} tasks done
+            </p>
+            <Button variant="outline" className="mt-4 w-full gap-2" onClick={() => navigate("/mission")}>
+              Continue Mission
+              <Target className="h-4 w-4" />
+            </Button>
+          </Card>
         </motion.div>
 
         {/* Stats Row */}

@@ -57,6 +57,30 @@ interface RuntimeMetrics {
   totalErrors: number;
 }
 
+interface EndpointConcurrencyLimiter {
+  name: string;
+  limit: number;
+  active: number;
+  rejected: number;
+  peakActive: number;
+}
+
+const createLimiter = (name: string, limit: number): EndpointConcurrencyLimiter => ({
+  name,
+  limit: Math.max(1, limit),
+  active: 0,
+  rejected: 0,
+  peakActive: 0,
+});
+
+const limiterSnapshot = (limiter: EndpointConcurrencyLimiter) => ({
+  name: limiter.name,
+  limit: limiter.limit,
+  active: limiter.active,
+  rejected: limiter.rejected,
+  peakActive: limiter.peakActive,
+});
+
 const searchQuerySchema = z.object({
   q: z.string().trim().min(2).max(120),
   type: z.enum(["all", "track", "course"]).optional().default("all"),
@@ -379,6 +403,32 @@ export const buildServer = async () => {
     redis: redisClient ?? undefined,
     redisKeyPrefix: "tech-news:",
   });
+  const codeExecutionLimiter = createLimiter(
+    "code-execution",
+    serverConfig.maxConcurrentCodeExecRequests,
+  );
+  const aiLimiter = createLimiter("ai-coach", serverConfig.maxConcurrentAiRequests);
+  const videoLimiter = createLimiter("learning-videos", serverConfig.maxConcurrentVideoRequests);
+  const techNewsLimiter = createLimiter("tech-news", serverConfig.maxConcurrentTechNewsRequests);
+  const questionLimiter = createLimiter(
+    "question-recommendations",
+    serverConfig.maxConcurrentQuestionRequests,
+  );
+
+  const tryEnterLimiter = (limiter: EndpointConcurrencyLimiter): boolean => {
+    if (limiter.active >= limiter.limit) {
+      limiter.rejected += 1;
+      return false;
+    }
+
+    limiter.active += 1;
+    limiter.peakActive = Math.max(limiter.peakActive, limiter.active);
+    return true;
+  };
+
+  const leaveLimiter = (limiter: EndpointConcurrencyLimiter): void => {
+    limiter.active = Math.max(0, limiter.active - 1);
+  };
 
   let ready = true;
 
@@ -428,6 +478,13 @@ export const buildServer = async () => {
       codeExecutionFallbackChain: executionProviders,
       aiCoachConfigured: Boolean(aiCoachClient),
       youTubeConfigured: Boolean(youTubeLearningClient),
+      limiterStatus: [
+        limiterSnapshot(codeExecutionLimiter),
+        limiterSnapshot(aiLimiter),
+        limiterSnapshot(videoLimiter),
+        limiterSnapshot(techNewsLimiter),
+        limiterSnapshot(questionLimiter),
+      ],
     };
   });
 
@@ -448,6 +505,13 @@ export const buildServer = async () => {
     codeExecutionFallbackChain: executionProviders,
     aiCoachConfigured: Boolean(aiCoachClient),
     youTubeConfigured: Boolean(youTubeLearningClient),
+    limiterStatus: [
+      limiterSnapshot(codeExecutionLimiter),
+      limiterSnapshot(aiLimiter),
+      limiterSnapshot(videoLimiter),
+      limiterSnapshot(techNewsLimiter),
+      limiterSnapshot(questionLimiter),
+    ],
   }));
 
   app.get("/api/search", async (request, reply) => {
@@ -586,84 +650,95 @@ export const buildServer = async () => {
       });
     }
 
-    const payload = parsedPayload.data;
-    const startedAt = Date.now();
-    let selectedLanguageName = executionLanguageNameCache.get(payload.languageId);
-
-    if (!selectedLanguageName && codeExecutionClient) {
-      try {
-        const languages = await codeExecutionClient.listLanguages();
-        executionLanguageNameCache.clear();
-        for (const language of languages) {
-          executionLanguageNameCache.set(language.id, language.name);
-        }
-        selectedLanguageName = executionLanguageNameCache.get(payload.languageId);
-      } catch (languageWarmupError) {
-        app.log.warn({ err: languageWarmupError }, "Language metadata warmup failed before execution");
-      }
+    if (!tryEnterLimiter(codeExecutionLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "Code execution is handling high load. Retry shortly.",
+      });
     }
 
+    const payload = parsedPayload.data;
+    const startedAt = Date.now();
+
     try {
-      if (!codeExecutionClient) {
-        throw new Error("Primary provider unavailable");
-      }
-      const results = await codeExecutionClient.execute({
-        languageId: payload.languageId,
-        sourceCode: payload.sourceCode,
-        testCases: payload.testCases,
-      });
+      let selectedLanguageName = executionLanguageNameCache.get(payload.languageId);
 
-      const passedCount = results.filter((result) => result.passed).length;
-      return {
-        total: results.length,
-        passedCount,
-        tookMs: Date.now() - startedAt,
-        provider: resolvedExecutionProvider,
-        results,
-      };
-    } catch (primaryError) {
-      app.log.warn({ err: primaryError }, "Primary code execution failed");
-
-      if (!localExecutionFallbackClient) {
-        app.log.error({ err: primaryError }, "Code execution failed");
-        return reply.code(502).send({
-          error: "Code execution failed",
-        });
-      }
-
-      const canRunOnLocal =
-        payload.languageId === 1 || isJavaScriptLanguage(selectedLanguageName);
-      if (!canRunOnLocal) {
-        return reply.code(502).send({
-          error:
-            "Primary compiler failed and local fallback only supports JavaScript runtimes. Retry with JavaScript or restore provider connectivity.",
-        });
+      if (!selectedLanguageName && codeExecutionClient) {
+        try {
+          const languages = await codeExecutionClient.listLanguages();
+          executionLanguageNameCache.clear();
+          for (const language of languages) {
+            executionLanguageNameCache.set(language.id, language.name);
+          }
+          selectedLanguageName = executionLanguageNameCache.get(payload.languageId);
+        } catch (languageWarmupError) {
+          app.log.warn({ err: languageWarmupError }, "Language metadata warmup failed before execution");
+        }
       }
 
       try {
-        const results = await localExecutionFallbackClient.execute({
-          languageId: 1,
+        if (!codeExecutionClient) {
+          throw new Error("Primary provider unavailable");
+        }
+        const results = await codeExecutionClient.execute({
+          languageId: payload.languageId,
           sourceCode: payload.sourceCode,
           testCases: payload.testCases,
         });
+
         const passedCount = results.filter((result) => result.passed).length;
         return {
           total: results.length,
           passedCount,
           tookMs: Date.now() - startedAt,
-          provider: "local-js",
-          fallbackFrom: resolvedExecutionProvider,
+          provider: resolvedExecutionProvider,
           results,
         };
-      } catch (fallbackError) {
-        app.log.error(
-          { err: fallbackError, primaryErr: primaryError },
-          "Code execution failed on all providers",
-        );
-        return reply.code(502).send({
-          error: "Code execution failed",
-        });
+      } catch (primaryError) {
+        app.log.warn({ err: primaryError }, "Primary code execution failed");
+
+        if (!localExecutionFallbackClient) {
+          app.log.error({ err: primaryError }, "Code execution failed");
+          return reply.code(502).send({
+            error: "Code execution failed",
+          });
+        }
+
+        const canRunOnLocal =
+          payload.languageId === 1 || isJavaScriptLanguage(selectedLanguageName);
+        if (!canRunOnLocal) {
+          return reply.code(502).send({
+            error:
+              "Primary compiler failed and local fallback only supports JavaScript runtimes. Retry with JavaScript or restore provider connectivity.",
+          });
+        }
+
+        try {
+          const results = await localExecutionFallbackClient.execute({
+            languageId: 1,
+            sourceCode: payload.sourceCode,
+            testCases: payload.testCases,
+          });
+          const passedCount = results.filter((result) => result.passed).length;
+          return {
+            total: results.length,
+            passedCount,
+            tookMs: Date.now() - startedAt,
+            provider: "local-js",
+            fallbackFrom: resolvedExecutionProvider,
+            results,
+          };
+        } catch (fallbackError) {
+          app.log.error(
+            { err: fallbackError, primaryErr: primaryError },
+            "Code execution failed on all providers",
+          );
+          return reply.code(502).send({
+            error: "Code execution failed",
+          });
+        }
       }
+    } finally {
+      leaveLimiter(codeExecutionLimiter);
     }
   });
 
@@ -678,55 +753,65 @@ export const buildServer = async () => {
       });
     }
 
-    const payload = parsedPayload.data;
-    const cacheKey = JSON.stringify({
-      branch: payload.branch ?? "",
-      strongestLanguage: payload.strongestLanguage ?? "",
-      focusLanguage: payload.focusLanguage ?? "",
-      topMistakes: payload.topMistakes,
-      recentProblemTitles: payload.recentProblemTitles,
-      techViseTags: payload.techViseTags,
-      maxPersonalized: payload.maxPersonalized,
-      maxGeneral: payload.maxGeneral,
-    });
-
-    const cached = await techNewsCache.get(cacheKey);
-    if (cached) {
-      metrics.techNewsCacheHits += 1;
-      return {
-        ...cached,
-        cache: "hit" as const,
-      };
+    if (!tryEnterLimiter(techNewsLimiter)) {
+      return reply.code(503).header("Retry-After", "3").send({
+        error: "Tech news feed is under high load. Retry in a moment.",
+      });
     }
 
-    metrics.techNewsCacheMisses += 1;
     try {
-      const feed = await collectTechNewsFeed({
-        request: {
-          branch: payload.branch,
-          strongestLanguage: payload.strongestLanguage,
-          focusLanguage: payload.focusLanguage,
-          topMistakes: payload.topMistakes,
-          recentProblemTitles: payload.recentProblemTitles,
-          techViseTags: payload.techViseTags,
-          maxPersonalized: payload.maxPersonalized,
-          maxGeneral: payload.maxGeneral,
-        },
-        requestTimeoutMs: Math.min(8_000, serverConfig.requestTimeoutMs),
+      const payload = parsedPayload.data;
+      const cacheKey = JSON.stringify({
+        branch: payload.branch ?? "",
+        strongestLanguage: payload.strongestLanguage ?? "",
+        focusLanguage: payload.focusLanguage ?? "",
+        topMistakes: payload.topMistakes,
+        recentProblemTitles: payload.recentProblemTitles,
+        techViseTags: payload.techViseTags,
+        maxPersonalized: payload.maxPersonalized,
+        maxGeneral: payload.maxGeneral,
       });
 
-      const responsePayload: TechNewsCachePayload = {
-        ...feed,
-        cache: "miss",
-      };
+      const cached = await techNewsCache.get(cacheKey);
+      if (cached) {
+        metrics.techNewsCacheHits += 1;
+        return {
+          ...cached,
+          cache: "hit" as const,
+        };
+      }
 
-      await techNewsCache.set(cacheKey, responsePayload);
-      return responsePayload;
-    } catch (error) {
-      app.log.error({ err: error }, "Tech news feed generation failed");
-      return reply.code(502).send({
-        error: "Tech news feed unavailable",
-      });
+      metrics.techNewsCacheMisses += 1;
+      try {
+        const feed = await collectTechNewsFeed({
+          request: {
+            branch: payload.branch,
+            strongestLanguage: payload.strongestLanguage,
+            focusLanguage: payload.focusLanguage,
+            topMistakes: payload.topMistakes,
+            recentProblemTitles: payload.recentProblemTitles,
+            techViseTags: payload.techViseTags,
+            maxPersonalized: payload.maxPersonalized,
+            maxGeneral: payload.maxGeneral,
+          },
+          requestTimeoutMs: Math.min(8_000, serverConfig.requestTimeoutMs),
+        });
+
+        const responsePayload: TechNewsCachePayload = {
+          ...feed,
+          cache: "miss",
+        };
+
+        await techNewsCache.set(cacheKey, responsePayload);
+        return responsePayload;
+      } catch (error) {
+        app.log.error({ err: error }, "Tech news feed generation failed");
+        return reply.code(502).send({
+          error: "Tech news feed unavailable",
+        });
+      }
+    } finally {
+      leaveLimiter(techNewsLimiter);
     }
   });
 
@@ -770,6 +855,12 @@ export const buildServer = async () => {
       });
     }
 
+    if (!tryEnterLimiter(aiLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "AI coach is handling high load. Retry shortly.",
+      });
+    }
+
     try {
       const profile = await aiCoachClient.generateProfileInsight(parsedPayload.data);
       return {
@@ -780,6 +871,8 @@ export const buildServer = async () => {
       return reply.code(502).send({
         error: "AI profile insight unavailable",
       });
+    } finally {
+      leaveLimiter(aiLimiter);
     }
   });
 
@@ -801,6 +894,12 @@ export const buildServer = async () => {
       });
     }
 
+    if (!tryEnterLimiter(aiLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "AI coach is handling high load. Retry shortly.",
+      });
+    }
+
     try {
       const analysis = await aiCoachClient.generateGapAnalysis(parsedPayload.data);
       return {
@@ -811,6 +910,8 @@ export const buildServer = async () => {
       return reply.code(502).send({
         error: "AI gap analysis unavailable",
       });
+    } finally {
+      leaveLimiter(aiLimiter);
     }
   });
 
@@ -832,6 +933,12 @@ export const buildServer = async () => {
       });
     }
 
+    if (!tryEnterLimiter(aiLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "AI coach is handling high load. Retry shortly.",
+      });
+    }
+
     try {
       const hint = await aiCoachClient.generateHint(parsedPayload.data);
       return {
@@ -842,6 +949,8 @@ export const buildServer = async () => {
       return reply.code(502).send({
         error: "AI hint unavailable",
       });
+    } finally {
+      leaveLimiter(aiLimiter);
     }
   });
 
@@ -856,112 +965,122 @@ export const buildServer = async () => {
       });
     }
 
-    const {
-      query,
-      branch,
-      courseTitle,
-      trackTitle,
-      level,
-      focusLanguage,
-      focusAreas,
-      maxResults,
-    } = parsedPayload.data;
-
-    const baseTerms = [
-      courseTitle,
-      trackTitle,
-      focusLanguage,
-      focusAreas[0],
-      focusAreas[1],
-      branch,
-      level,
-    ]
-      .filter((value): value is string => Boolean(value && value.trim().length > 0))
-      .map((value) => value.trim());
-
-    const fallbackCore = baseTerms.join(" ").trim();
-    const fallbackQuery = fallbackCore
-      ? `${fallbackCore} tutorial`
-      : `${branch?.trim() || "software engineering"} coding tutorial`;
-
-    const candidateQueries = Array.from(
-      new Set(
-        [
-          query?.trim(),
-          courseTitle ? `${courseTitle} ${focusLanguage ?? ""} tutorial`.trim() : "",
-          trackTitle ? `${trackTitle} practical project tutorial`.trim() : "",
-          `${focusLanguage ?? "programming"} ${focusAreas[0] ?? "problem solving"} tutorial`.trim(),
-          fallbackQuery,
-        ].filter((value): value is string => Boolean(value && value.length > 0)),
-      ),
-    );
-
-    const requestedCount = maxResults ?? serverConfig.youtubeDefaultMaxResults;
-    const primaryQuery = candidateQueries[0] ?? fallbackQuery;
-    const fallbackVideos = getFallbackLearningVideos({
-      query: primaryQuery,
-      branch,
-      courseTitle,
-      trackTitle,
-      level,
-      focusLanguage,
-      focusAreas,
-      maxResults: requestedCount,
-    });
-
-    if (!youTubeLearningClient) {
-      return {
-        query: primaryQuery,
-        queriesUsed: candidateQueries,
-        source: "fallback",
-        total: fallbackVideos.length,
-        videos: fallbackVideos,
-      };
+    if (!tryEnterLimiter(videoLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "Learning videos are under high load. Retry shortly.",
+      });
     }
 
     try {
-      const mergedVideos: LearningVideo[] = [];
-      const seen = new Set<string>();
+      const {
+        query,
+        branch,
+        courseTitle,
+        trackTitle,
+        level,
+        focusLanguage,
+        focusAreas,
+        maxResults,
+      } = parsedPayload.data;
 
-      for (const [index, candidateQuery] of candidateQueries.entries()) {
-        if (mergedVideos.length >= requestedCount) break;
+      const baseTerms = [
+        courseTitle,
+        trackTitle,
+        focusLanguage,
+        focusAreas[0],
+        focusAreas[1],
+        branch,
+        level,
+      ]
+        .filter((value): value is string => Boolean(value && value.trim().length > 0))
+        .map((value) => value.trim());
 
-        const candidateVideos = await youTubeLearningClient.searchVideos({
-          query: candidateQuery,
-          maxResults: Math.min(12, requestedCount + 4),
-          videoDuration: index === 0 ? "medium" : "any",
-        });
+      const fallbackCore = baseTerms.join(" ").trim();
+      const fallbackQuery = fallbackCore
+        ? `${fallbackCore} tutorial`
+        : `${branch?.trim() || "software engineering"} coding tutorial`;
 
-        for (const video of candidateVideos) {
-          if (seen.has(video.videoId)) continue;
-          seen.add(video.videoId);
-          mergedVideos.push(video);
+      const candidateQueries = Array.from(
+        new Set(
+          [
+            query?.trim(),
+            courseTitle ? `${courseTitle} ${focusLanguage ?? ""} tutorial`.trim() : "",
+            trackTitle ? `${trackTitle} practical project tutorial`.trim() : "",
+            `${focusLanguage ?? "programming"} ${focusAreas[0] ?? "problem solving"} tutorial`.trim(),
+            fallbackQuery,
+          ].filter((value): value is string => Boolean(value && value.length > 0)),
+        ),
+      );
+
+      const requestedCount = maxResults ?? serverConfig.youtubeDefaultMaxResults;
+      const primaryQuery = candidateQueries[0] ?? fallbackQuery;
+      const fallbackVideos = getFallbackLearningVideos({
+        query: primaryQuery,
+        branch,
+        courseTitle,
+        trackTitle,
+        level,
+        focusLanguage,
+        focusAreas,
+        maxResults: requestedCount,
+      });
+
+      if (!youTubeLearningClient) {
+        return {
+          query: primaryQuery,
+          queriesUsed: candidateQueries,
+          source: "fallback",
+          total: fallbackVideos.length,
+          videos: fallbackVideos,
+        };
+      }
+
+      try {
+        const mergedVideos: LearningVideo[] = [];
+        const seen = new Set<string>();
+
+        for (const [index, candidateQuery] of candidateQueries.entries()) {
+          if (mergedVideos.length >= requestedCount) break;
+
+          const candidateVideos = await youTubeLearningClient.searchVideos({
+            query: candidateQuery,
+            maxResults: Math.min(12, requestedCount + 4),
+            videoDuration: index === 0 ? "medium" : "any",
+          });
+
+          for (const video of candidateVideos) {
+            if (seen.has(video.videoId)) continue;
+            seen.add(video.videoId);
+            mergedVideos.push(video);
+            if (mergedVideos.length >= requestedCount) break;
+          }
+        }
+        for (const fallback of fallbackVideos) {
+          if (seen.has(fallback.videoId)) continue;
+          seen.add(fallback.videoId);
+          mergedVideos.push(fallback);
           if (mergedVideos.length >= requestedCount) break;
         }
-      }
-      for (const fallback of fallbackVideos) {
-        if (seen.has(fallback.videoId)) continue;
-        seen.add(fallback.videoId);
-        mergedVideos.push(fallback);
-        if (mergedVideos.length >= requestedCount) break;
-      }
 
-      return {
-        query: primaryQuery,
-        queriesUsed: candidateQueries,
-        source: "youtube",
-        total: mergedVideos.length,
-        videos: mergedVideos.slice(0, requestedCount),
-      };
-    } catch (error) {
-      app.log.error({ err: error }, "YouTube learning video fetch failed");
-      return {
-        query: primaryQuery,
-        queriesUsed: candidateQueries,
-        source: "fallback",
-        total: fallbackVideos.length,
-        videos: fallbackVideos,
-      };
+        return {
+          query: primaryQuery,
+          queriesUsed: candidateQueries,
+          source: "youtube",
+          total: mergedVideos.length,
+          videos: mergedVideos.slice(0, requestedCount),
+        };
+      } catch (error) {
+        app.log.error({ err: error }, "YouTube learning video fetch failed");
+        return {
+          query: primaryQuery,
+          queriesUsed: candidateQueries,
+          source: "fallback",
+          total: fallbackVideos.length,
+          videos: fallbackVideos,
+        };
+      }
+    } finally {
+      leaveLimiter(videoLimiter);
     }
   });
 
@@ -976,51 +1095,61 @@ export const buildServer = async () => {
       });
     }
 
-    const normalizedKeywords = [...parsedPayload.data.keywords]
-      .map((entry) => entry.toLowerCase())
-      .sort();
-    const cacheKey = JSON.stringify({
-      branch: parsedPayload.data.branch?.toLowerCase() ?? "",
-      trackId: parsedPayload.data.trackId ?? "",
-      trackTitle: parsedPayload.data.trackTitle?.toLowerCase() ?? "",
-      courseId: parsedPayload.data.courseId ?? "",
-      courseTitle: parsedPayload.data.courseTitle?.toLowerCase() ?? "",
-      keywords: normalizedKeywords,
-      limit: parsedPayload.data.limit ?? 10,
-    });
-
-    const cached = await questionCache.get(cacheKey);
-    if (cached) {
-      metrics.questionCacheHits += 1;
-      return cached;
+    if (!tryEnterLimiter(questionLimiter)) {
+      return reply.code(503).header("Retry-After", "2").send({
+        error: "Question recommendations are under high load. Retry shortly.",
+      });
     }
-    metrics.questionCacheMisses += 1;
 
     try {
-      const result = await collectCourseQuestions({
-        branch: parsedPayload.data.branch,
-        trackId: parsedPayload.data.trackId,
-        trackTitle: parsedPayload.data.trackTitle,
-        courseId: parsedPayload.data.courseId,
-        courseTitle: parsedPayload.data.courseTitle,
-        keywords: parsedPayload.data.keywords,
+      const normalizedKeywords = [...parsedPayload.data.keywords]
+        .map((entry) => entry.toLowerCase())
+        .sort();
+      const cacheKey = JSON.stringify({
+        branch: parsedPayload.data.branch?.toLowerCase() ?? "",
+        trackId: parsedPayload.data.trackId ?? "",
+        trackTitle: parsedPayload.data.trackTitle?.toLowerCase() ?? "",
+        courseId: parsedPayload.data.courseId ?? "",
+        courseTitle: parsedPayload.data.courseTitle?.toLowerCase() ?? "",
+        keywords: normalizedKeywords,
         limit: parsedPayload.data.limit ?? 10,
       });
 
-      const payload: QuestionRecommendationPayload = {
-        query: result.query,
-        source: result.source,
-        sources: result.sources,
-        total: result.results.length,
-        results: result.results,
-      };
-      await questionCache.set(cacheKey, payload);
-      return payload;
-    } catch (error) {
-      app.log.error({ err: error }, "Question recommendation fetch failed");
-      return reply.code(502).send({
-        error: "Question recommendations unavailable",
-      });
+      const cached = await questionCache.get(cacheKey);
+      if (cached) {
+        metrics.questionCacheHits += 1;
+        return cached;
+      }
+      metrics.questionCacheMisses += 1;
+
+      try {
+        const result = await collectCourseQuestions({
+          branch: parsedPayload.data.branch,
+          trackId: parsedPayload.data.trackId,
+          trackTitle: parsedPayload.data.trackTitle,
+          courseId: parsedPayload.data.courseId,
+          courseTitle: parsedPayload.data.courseTitle,
+          keywords: parsedPayload.data.keywords,
+          limit: parsedPayload.data.limit ?? 10,
+        });
+
+        const payload: QuestionRecommendationPayload = {
+          query: result.query,
+          source: result.source,
+          sources: result.sources,
+          total: result.results.length,
+          results: result.results,
+        };
+        await questionCache.set(cacheKey, payload);
+        return payload;
+      } catch (error) {
+        app.log.error({ err: error }, "Question recommendation fetch failed");
+        return reply.code(502).send({
+          error: "Question recommendations unavailable",
+        });
+      }
+    } finally {
+      leaveLimiter(questionLimiter);
     }
   });
 
