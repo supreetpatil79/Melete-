@@ -1,177 +1,155 @@
 # Melete
 
-Melete is a full-stack learning platform for students and developers.
+A full-stack, production-minded learning platform that combines guided learning, coding practice, and career navigation in one workspace.
 
-It combines:
-- adaptive learning paths
-- coding practice with execution feedback
-- personalized insights
-- ranked search across tracks and courses
-- community features (TechVise)
+Melete is built for students and early-career engineers who need more than a course catalog. It is designed as an execution system: discover the right path, practice under realistic constraints, and measure progress continuously.
 
-## Tech Stack
+## Why Melete Exists
 
-### Frontend
-- React 18 + TypeScript
-- Vite
-- Tailwind CSS + shadcn/ui (Radix primitives)
-- TanStack Query
-- React Router
-- Monaco Editor
-- Framer Motion
+Most learning products optimize for content volume. Melete optimizes for outcomes:
 
-### Backend
-- Node.js + TypeScript
-- Fastify
-- Zod request validation
-- In-memory cache with optional Redis (`ioredis`)
-- Optional external compiler providers (Judge0 / RapidAPI / Piston) with local JS fallback
+- learn by track and mission, not random playlists
+- practice in a coding workspace with run/submit feedback loops
+- convert activity into signals (gaps, strengths, momentum)
+- search across all learning assets with relevance and speed
 
-### Integrations
-- OpenAI API (profile insights, gap analysis, hints)
-- YouTube Data API (learning recommendations)
-- Hacker News Algolia API (tech news feed)
+## What You Get
+
+- Personalized mission and track navigation
+- Practice workspace with runtime execution + submissions
+- Unified search across Problems, Tracks, Courses, Roadmaps, Help Docs
+- Company roadmap intelligence for internship/FTE readiness
+- AI coach surfaces (when OpenAI key is configured)
+- Tech updates and curated event discovery
+
+## System Snapshot
+
+| Layer | Stack |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind, shadcn/ui, React Query |
+| Backend | Fastify + TypeScript, Zod, in-memory/Redis cache |
+| Search | Elasticsearch (primary) + local in-memory fallback |
+| Practice Runtime | Provider-compatible execution client + local JS sandbox fallback |
+| Infra | Docker Compose (frontend, backend, elasticsearch) |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[User Browser] --> F[React Frontend]
+  F --> B[Fastify Backend]
+  B --> ES[Elasticsearch Cluster]
+  B --> CE[Code Execution Provider or Local JS Sandbox]
+  B --> OA[OpenAI API Optional]
+  B --> YT[YouTube API Optional]
+```
+
+See detailed design in [Architecture](./docs/ARCHITECTURE.md).
 
 ## Repository Layout
 
-- `src/` frontend application
-- `server/` backend API
-- `src/shared/` shared search logic
-- `docker/` nginx and container config
-- `deploy/cloudrun/` Cloud Run deployment scripts
+```text
+.
+├── src/                       # Frontend app (pages, components, services)
+│   ├── components/            # Reusable UI + feature components
+│   ├── pages/                 # Route-level screens
+│   ├── services/              # API clients and client-side engines
+│   ├── data/                  # Local datasets and seeded metadata
+│   └── shared/                # Shared ranking/search utilities
+├── server/                    # Fastify backend and integrations
+├── public/                    # Static assets (logos, icons)
+├── docker/                    # Nginx runtime config
+├── deploy/cloudrun/           # Cloud Run deployment scripts
+├── career_intelligence_engine/# Optional Python intelligence service
+└── docs/                      # Submission docs and operational guides
+```
 
-## Local Development
+Full map: [Project Structure](./docs/PROJECT_STRUCTURE.md)
 
-### Prerequisites
-- Node.js 20+
-- npm
+## Quick Start
 
-### Install
+### 1) Install
 
 ```bash
 npm install
 ```
 
-### Run frontend + backend
+### 2) Run locally (split mode)
 
-Terminal 1:
+Terminal A:
 
 ```bash
 npm run server:dev
 ```
 
-Terminal 2:
+Terminal B:
 
 ```bash
 npm run dev
 ```
 
-App: `http://localhost:8080`
+- Frontend: <http://localhost:8080>
+- Backend health: <http://127.0.0.1:4000/healthz>
 
-Backend health:
-
-```bash
-curl http://127.0.0.1:4000/healthz
-```
-
-## Docker (recommended for parity)
-
-1. Add secrets/config in `.env.docker`
-2. Start:
+### 3) Run with Docker (recommended)
 
 ```bash
 npm run docker:up
 ```
 
-3. Open:
-- App: `http://localhost:8090`
-- Backend: `http://localhost:4000`
+- Frontend: <http://localhost:8090>
+- Backend: <http://localhost:4000>
+- Elasticsearch: <http://localhost:9200>
 
-4. Stop:
+Stop:
 
 ```bash
 npm run docker:down
 ```
 
-5. Logs:
+## Core Endpoints
 
-```bash
-npm run docker:logs
-```
-
-## Core API Endpoints
+### Platform Health
 
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
-- `GET /api/search`
+
+### Unified Search
+
+- `GET /search?q=...`
+- `GET /search/autocomplete?q=...`
+- `POST /search/reindex`
+- `POST /search/engagement`
+
+### Practice Runtime
+
 - `GET /api/code/languages`
 - `POST /api/code/execute`
-- `POST /api/news/tech`
-- `POST /api/graph/learning`
-- `POST /api/learning/videos`
-- `POST /api/questions/recommendations`
-- `POST /api/ai/profile-insight`
-- `POST /api/ai/gap-analysis`
-- `POST /api/ai/hint`
+- `POST /api/code/submissions`
+- `GET /api/code/submissions`
 
-## Product Features
+See endpoint details in [Runbook](./docs/RUNBOOK.md).
 
-- Mission-based daily learning flow
-- Practice IDE with compiler/runtime diagnostics
-- Personalized hints and learning gap analysis
-- Knowledge graph driven profile insights
-- Personalized and general tech news feed
-- Tech hackathons/events board with Google Calendar add links
-- PDF wrap-up export for revision
+## Environment Configuration
 
-## Environment Variables
+Template files:
 
-Use:
 - `.env.backend.example`
 - `.env.frontend.example`
 - `.env.docker.example`
 
-Important keys:
-- `PORT`, `HOST`
-- `REDIS_URL`
-- `CODE_EXEC_PROVIDER`, `CODE_EXEC_API_URL`, `CODE_EXEC_API_KEY`, `CODE_EXEC_API_HOST`
-- `CODE_EXEC_FALLBACK_PROVIDER`, `CODE_EXEC_FALLBACK_API_URL`
-- `OPENAI_API_KEY`, `OPENAI_MODEL`
-- `YOUTUBE_API_KEY`
-- `VITE_API_BASE_URL`
+Important variables:
 
-## Deployment
-
-### Recommended
-- Backend: Google Cloud Run
-- Frontend: Vercel
-
-This gives:
-- horizontal scaling
-- managed health checks
-- stateless rollout safety
-- CDN delivery for frontend
-
-### Cloud Run script
-
-```bash
-PROJECT_ID=<your-project-id> REGION=us-central1 npm run deploy:gcp
-```
-
-### Vercel
-Set:
-- build command: `npm run build`
-- output directory: `dist`
-- env: `VITE_API_BASE_URL=<backend-url>`
-
-## Scale Notes (10k+ users)
-
-- Run multiple backend instances behind load balancer
-- Keep backend stateless
-- Use Redis for shared cache/rate-limit state in multi-instance environments
-- Track p95 latency, error rate, and saturation
-- Keep one warm instance in production to avoid cold-start spikes
+- `SEARCH_BACKEND`
+- `ELASTICSEARCH_URL`
+- `ELASTICSEARCH_INDEX`
+- `ELASTICSEARCH_UNIFIED_INDEX`
+- `CODE_EXEC_PROVIDER`
+- `CODE_EXEC_API_URL`
+- `CODE_EXEC_ENABLE_FALLBACK`
+- `OPENAI_API_KEY` (optional)
+- `YOUTUBE_API_KEY` (optional)
 
 ## Quality Checks
 
@@ -179,3 +157,17 @@ Set:
 npm test
 npm run build
 ```
+
+## Submission Notes
+
+For evaluators and maintainers:
+
+- [Documentation Hub](./docs/README.md)
+- [Submission Overview](./docs/SUBMISSION.md)
+- [Project Structure](./docs/PROJECT_STRUCTURE.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Operations Runbook](./docs/RUNBOOK.md)
+
+---
+
+If you are reviewing this repository for deployment or evaluation, start with [Submission Overview](./docs/SUBMISSION.md).
