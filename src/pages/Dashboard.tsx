@@ -145,7 +145,7 @@ const Dashboard = () => {
           </p>
           <Button
             onClick={() => navigate("/login")}
-            className="shadow-glow hover:scale-105 transition-transform"
+            className="shadow-glow"
           >
             Go to Login
           </Button>
@@ -457,7 +457,7 @@ const Dashboard = () => {
                         <button
                           type="button"
                           onClick={() => setSelectedVideoId(video.videoId)}
-                          className="w-full text-left"
+                          className="liquid-glass-button w-full text-left"
                         >
                           <div className="flex items-start gap-3">
                             {video.thumbnailUrl ? (
@@ -611,7 +611,7 @@ const Dashboard = () => {
             </p>
             <Button
               onClick={() => setShowBranchDialog(true)}
-              className="shadow-glow hover:scale-105 transition-transform"
+              className="shadow-glow"
             >
               Change Branch
             </Button>

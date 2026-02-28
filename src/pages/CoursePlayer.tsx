@@ -201,7 +201,7 @@ const CoursePlayer = () => {
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-primary to-accent transition-all"
+                    className="h-full bg-gradient-to-r from-primary to-accent"
                     style={{ width: `${courseProgress}%` }}
                   />
                 </div>
@@ -209,7 +209,7 @@ const CoursePlayer = () => {
 
               <Button
                 onClick={() => setCourseProgress(Math.min(courseProgress + 10, 100))}
-                className="shadow-glow hover:scale-105 transition-transform"
+                className="shadow-glow"
               >
                 Continue Learning
               </Button>
@@ -291,7 +291,7 @@ const CoursePlayer = () => {
                       <h3 className="font-medium text-foreground">Code Exercises</h3>
                       <p className="text-sm text-muted-foreground">Practice with interactive code examples</p>
                     </div>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="secondary">
                       Start
                     </Button>
                   </div>
@@ -309,7 +309,7 @@ const CoursePlayer = () => {
                       <h3 className="font-medium text-foreground">AI Tutor</h3>
                       <p className="text-sm text-muted-foreground">Get help with this course topic</p>
                     </div>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="secondary">
                       Ask
                     </Button>
                   </div>
@@ -359,7 +359,7 @@ const CoursePlayer = () => {
                           <button
                             type="button"
                             onClick={() => setActiveVideoId(video.videoId)}
-                            className="w-full text-left"
+                            className="liquid-glass-button w-full text-left"
                           >
                             <p className="line-clamp-1 text-sm font-medium text-foreground">
                               {video.title}
@@ -467,7 +467,7 @@ const CoursePlayer = () => {
                 <Card className="border border-border/50 bg-gradient-card relative">
                   <button
                     onClick={() => setTutorOpen(false)}
-                    className="absolute top-2 right-2 p-1 hover:bg-secondary rounded-lg transition-colors"
+                    className="liquid-glass-button absolute right-2 top-2 rounded-lg p-1 transition-colors hover:bg-secondary"
                   >
                     <X className="h-4 w-4 text-muted-foreground" />
                   </button>

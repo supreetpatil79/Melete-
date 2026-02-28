@@ -24,17 +24,17 @@ const BranchSelector = () => {
           <motion.button
             key={branch.id}
             onClick={() => changeBranch(branch.id)}
-            className={`p-3 rounded-lg border-2 transition-all text-left text-sm ${
+            className={`motion-interactive rounded-lg border-2 p-3 text-left text-sm ${
               user.branch === branch.id
                 ? "border-primary bg-primary/5"
                 : "border-border/50 bg-muted/30 hover:border-primary/50"
             }`}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 0 }}
           >
             <div className="flex items-start gap-2">
               <div
-                className={`mt-0.5 h-4 w-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${
                   user.branch === branch.id
                     ? "border-primary bg-primary"
                     : "border-border"

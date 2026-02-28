@@ -79,7 +79,7 @@ const SignupPage = () => {
 
       <div className="container relative max-w-2xl">
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-          <Card className="premium-outline border-border/70 bg-card/85 p-8 shadow-card backdrop-blur">
+          <Card className="liquid-glass premium-outline border-border/70 bg-card/85 p-8 shadow-card backdrop-blur">
             <div className="mb-8">
               <p className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -210,13 +210,13 @@ const SignupPage = () => {
                     <motion.button
                       key={branch.id}
                       onClick={() => setSelectedBranch(branch.id)}
-                      className={`rounded-xl border-2 p-4 text-left transition-all ${
+                      className={`motion-interactive rounded-xl border-2 p-4 text-left ${
                         selectedBranch === branch.id
                           ? "border-primary bg-primary/8"
                           : "border-border/70 bg-background/70 hover:border-primary/40"
                       }`}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
+                      whileHover={{ y: -1 }}
+                      whileTap={{ y: 0 }}
                     >
                       <div className="flex items-start gap-3">
                         <div
