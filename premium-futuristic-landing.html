@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NebulaOS AI | Premium SaaS</title>
+  <style>
+    :root {
+      --bg-start: #fbf8f2;
+      --bg-mid: #f3f7ff;
+      --bg-end: #ffffff;
+      --text: #121826;
+      --muted: #5f6b82;
+      --glass: rgba(255, 255, 255, 0.48);
+      --glass-strong: rgba(255, 255, 255, 0.68);
+      --line: rgba(255, 255, 255, 0.8);
+      --line-soft: rgba(255, 255, 255, 0.45);
+      --primary-a: #4e7cff;
+      --primary-b: #6ed2ff;
+      --primary-c: #89f5ff;
+      --glow: rgba(92, 159, 255, 0.35);
+      --radius-xl: 36px;
+      --radius-lg: 28px;
+      --radius-md: 24px;
+      --shadow-elevated:
+        -12px -12px 24px rgba(255, 255, 255, 0.92),
+        14px 16px 34px rgba(41, 66, 108, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.36);
+      --shadow-hover:
+        -14px -14px 28px rgba(255, 255, 255, 0.96),
+        20px 24px 44px rgba(41, 66, 108, 0.16),
+        0 0 0 1px rgba(255, 255, 255, 0.7),
+        0 12px 34px rgba(92, 159, 255, 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Avenir Next", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      background: linear-gradient(140deg, var(--bg-start) 0%, var(--bg-mid) 46%, var(--bg-end) 100%);
+      line-height: 1.45;
+      overflow-x: hidden;
+      position: relative;
+      padding: 28px 20px 48px;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      pointer-events: none;
+      z-index: -1;
+      border-radius: 50%;
+      filter: blur(60px);
+    }
+
+    body::before {
+      width: 480px;
+      height: 480px;
+      top: -170px;
+      left: -120px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(191, 214, 255, 0.2) 65%, rgba(191, 214, 255, 0));
+    }
+
+    body::after {
+      width: 560px;
+      height: 560px;
+      right: -180px;
+      top: 140px;
+      background: radial-gradient(circle, rgba(137, 214, 255, 0.22), rgba(137, 214, 255, 0.04) 60%, transparent);
+    }
+
+    .container {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .glass-panel {
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.35));
+      border: 1px solid var(--line-soft);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      box-shadow: var(--shadow-elevated);
+    }
+
+    .nav-shell {
+      border-radius: 999px;
+      padding: 10px 14px;
+      margin-bottom: 26px;
+      position: sticky;
+      top: 20px;
+      z-index: 20;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.45));
+      border: 1px solid var(--line);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        -10px -10px 20px rgba(255, 255, 255, 0.88),
+        14px 16px 32px rgba(24, 44, 80, 0.13);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+    }
+
+    .nav-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.2) 48%, transparent 55%),
+        linear-gradient(145deg, #4f7eff, #6dd6ff);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.7),
+        0 8px 20px rgba(79, 126, 255, 0.34);
+    }
+
+    .nav-links {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.44);
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: #374157;
+      font-size: 0.9rem;
+      padding: 9px 14px;
+      border-radius: 999px;
+      transition: all 0.3s ease;
+    }
+
+    .nav-links a:hover {
+      color: #1b2437;
+      background: rgba(255, 255, 255, 0.68);
+      box-shadow:
+        -6px -6px 14px rgba(255, 255, 255, 0.86),
+        6px 8px 16px rgba(33, 56, 92, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .hero {
+      border-radius: var(--radius-xl);
+      padding: clamp(28px, 5.2vw, 58px);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      width: 540px;
+      height: 540px;
+      top: -220px;
+      right: -130px;
+      background: radial-gradient(circle, rgba(82, 142, 255, 0.26), rgba(82, 142, 255, 0.06) 46%, transparent 66%);
+      filter: blur(12px);
+      z-index: -1;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid transparent;
+      background: linear-gradient(130deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.25)) border-box;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: linear-gradient(130deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.42));
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      font-size: 0.84rem;
+      color: #253049;
+      box-shadow:
+        -8px -8px 16px rgba(255, 255, 255, 0.85),
+        10px 12px 20px rgba(37, 60, 98, 0.12);
+    }
+
+    .hero-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(180deg, #4f7eff, #7ce4ff);
+      box-shadow: 0 0 0 6px rgba(96, 176, 255, 0.12);
+    }
+
+    .hero-content {
+      max-width: 680px;
+      margin-top: 22px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5.2vw, 4.2rem);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      margin-bottom: 18px;
+      text-wrap: balance;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(120deg, #3a67ef, #58a7ff 52%, #63dfff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: clamp(1rem, 1.7vw, 1.17rem);
+      max-width: 58ch;
+      margin-bottom: 30px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .btn {
+      border: 0;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+      position: relative;
+      will-change: transform;
+      color: #10203f;
+    }
+
+    .btn:hover {
+      transform: translateY(-4px) scale(1.02);
+    }
+
+    .btn:active {
+      transform: translateY(-1px) scale(0.995);
+    }
+
+    .btn-primary {
+      border-radius: 999px;
+      padding: 14px 26px;
+      color: #ffffff;
+      background:
+        radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.08) 32%, transparent 55%),
+        linear-gradient(135deg, var(--primary-a), var(--primary-b) 58%, var(--primary-c));
+      box-shadow:
+        -8px -8px 18px rgba(255, 255, 255, 0.6),
+        10px 14px 24px rgba(63, 112, 202, 0.32),
+        0 0 0 0 rgba(110, 210, 255, 0.45);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .btn-primary::after {
+      content: "";
+      position: absolute;
+      inset: 2px;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      pointer-events: none;
+    }
+
+    .btn-primary:hover {
+      box-shadow:
+        -10px -10px 22px rgba(255, 255, 255, 0.68),
+        14px 18px 30px rgba(63, 112, 202, 0.38),
+        0 0 22px 2px rgba(99, 206, 255, 0.48);
+    }
+
+    .btn-glass {
+      border-radius: 999px;
+      padding: 14px 24px;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(130deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.24)) padding-box,
+        linear-gradient(130deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.28)) border-box;
+      box-shadow:
+        -8px -8px 18px rgba(255, 255, 255, 0.78),
+        10px 12px 24px rgba(33, 57, 96, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .btn-glass:hover {
+      box-shadow:
+        -10px -10px 22px rgba(255, 255, 255, 0.84),
+        14px 16px 30px rgba(33, 57, 96, 0.18),
+        0 0 24px rgba(137, 214, 255, 0.22);
+    }
+
+    .btn-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.16) 46%, transparent 58%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.34));
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      box-shadow:
+        -8px -8px 16px rgba(255, 255, 255, 0.78),
+        10px 12px 22px rgba(34, 57, 95, 0.16),
+        0 0 0 0 rgba(90, 152, 255, 0.22);
+      color: #224487;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .btn-icon:hover {
+      box-shadow:
+        -10px -10px 22px rgba(255, 255, 255, 0.86),
+        14px 16px 28px rgba(34, 57, 95, 0.2),
+        0 0 18px rgba(90, 152, 255, 0.35);
+    }
+
+    .floating-ui {
+      position: absolute;
+      right: clamp(16px, 3vw, 36px);
+      bottom: clamp(20px, 5vw, 34px);
+      display: grid;
+      gap: 12px;
+      width: min(340px, 47%);
+      pointer-events: none;
+    }
+
+    .float-card {
+      border-radius: var(--radius-md);
+      padding: 16px 18px;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.36));
+      border: 1px solid rgba(255, 255, 255, 0.74);
+      box-shadow:
+        -10px -10px 20px rgba(255, 255, 255, 0.84),
+        10px 14px 24px rgba(26, 44, 78, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      animation: drift 5.5s ease-in-out infinite;
+    }
+
+    .float-card:nth-child(2) {
+      animation-delay: -2.2s;
+      margin-left: 18%;
+      width: 82%;
+    }
+
+    .float-title {
+      font-size: 0.8rem;
+      color: #4b5770;
+      margin-bottom: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .float-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1a2540;
+    }
+
+    .metrics {
+      margin-top: 26px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .metric-card {
+      border-radius: var(--radius-lg);
+      padding: 18px;
+    }
+
+    .metric-kpi {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .features {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .feature {
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .feature:hover {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .feature h3 {
+      font-size: 1.08rem;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .feature .dot {
+      width: 11px;
+      height: 11px;
+      margin-bottom: 10px;
+      border-radius: 50%;
+      background: linear-gradient(130deg, var(--primary-a), var(--primary-c));
+      box-shadow: 0 0 0 8px rgba(93, 161, 255, 0.12);
+    }
+
+    @keyframes drift {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-8px);
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .floating-ui {
+        position: static;
+        width: min(400px, 100%);
+        margin-top: 22px;
+        pointer-events: auto;
+      }
+
+      .metrics,
+      .features {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 18px 12px 34px;
+      }
+
+      .nav-shell {
+        border-radius: 26px;
+      }
+
+      .nav-links {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .hero {
+        padding: 24px 20px;
+        border-radius: 30px;
+      }
+
+      .actions {
+        gap: 12px;
+      }
+
+      .btn-primary,
+      .btn-glass {
+        width: 100%;
+        text-align: center;
+      }
+
+      .metrics,
+      .features {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="nav-shell">
+      <nav class="nav-content" aria-label="Main Navigation">
+        <a href="#" class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          NebulaOS AI
+        </a>
+        <ul class="nav-links">
+          <li><a href="#">Product</a></li>
+          <li><a href="#">Solutions</a></li>
+          <li><a href="#">Pricing</a></li>
+          <li><a href="#">Docs</a></li>
+        </ul>
+        <a class="btn btn-glass" href="#">Book Demo</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero glass-panel">
+        <span class="hero-badge">VisionOS-grade Interface Engine</span>
+        <div class="hero-content">
+          <h1>Build your AI workflows with <span>tactile cloud intelligence</span>.</h1>
+          <p>
+            NebulaOS AI unifies automation, analytics, and orchestration in one premium control layer designed for fast teams shipping ambitious products.
+          </p>
+          <div class="actions">
+            <a href="#" class="btn btn-primary">Start Free Trial</a>
+            <a href="#" class="btn btn-glass">Explore Platform</a>
+            <a href="#" class="btn btn-icon" aria-label="Watch intro">↗</a>
+          </div>
+        </div>
+
+        <aside class="floating-ui" aria-label="Floating Insights">
+          <article class="float-card">
+            <div class="float-title">Autonomous Runs</div>
+            <div class="float-value">1.2M workflows this week</div>
+          </article>
+          <article class="float-card">
+            <div class="float-title">Predictive Throughput</div>
+            <div class="float-value">+38% velocity in 30 days</div>
+          </article>
+        </aside>
+      </section>
+
+      <section class="metrics" aria-label="Key Metrics">
+        <article class="metric-card glass-panel">
+          <div class="metric-kpi">99.98%</div>
+          <p class="metric-label">Platform uptime with self-healing nodes</p>
+        </article>
+        <article class="metric-card glass-panel">
+          <div class="metric-kpi">45ms</div>
+          <p class="metric-label">Average response at global edge points</p>
+        </article>
+        <article class="metric-card glass-panel">
+          <div class="metric-kpi">300+</div>
+          <p class="metric-label">Enterprise teams onboarded this quarter</p>
+        </article>
+      </section>
+
+      <section class="features" aria-label="Product Highlights">
+        <article class="feature glass-panel">
+          <div class="dot" aria-hidden="true"></div>
+          <h3>Intelligent Agent Router</h3>
+          <p>Route requests across models and tools in real time with dynamic cost and quality balancing.</p>
+        </article>
+        <article class="feature glass-panel">
+          <div class="dot" aria-hidden="true"></div>
+          <h3>Live Memory Context</h3>
+          <p>Preserve long-running user intent and team memory across every interaction and product surface.</p>
+        </article>
+        <article class="feature glass-panel">
+          <div class="dot" aria-hidden="true"></div>
+          <h3>Launch Control Center</h3>
+          <p>Observe reliability, trace latency, and deploy updates from one premium command interface.</p>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

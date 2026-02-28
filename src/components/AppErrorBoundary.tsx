@@ -9,6 +9,8 @@ interface AppErrorBoundaryState {
   hasError: boolean;
 }
 
+const CHUNK_RECOVERY_KEY = "melete_chunk_recovery_attempted";
+
 class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = {
     hasError: false,
@@ -21,9 +23,28 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Keep a runtime breadcrumb for production incident triage.
     console.error("Unhandled UI error", error, errorInfo);
+
+    const message = String(error?.message ?? "");
+    const isChunkLoadError =
+      error?.name === "ChunkLoadError" ||
+      message.includes("Failed to fetch dynamically imported module") ||
+      message.includes("Importing a module script failed");
+
+    if (!isChunkLoadError) {
+      return;
+    }
+
+    // Recover once from stale chunk manifests after deploys.
+    const alreadyAttempted = window.sessionStorage.getItem(CHUNK_RECOVERY_KEY) === "1";
+    if (alreadyAttempted) {
+      return;
+    }
+    window.sessionStorage.setItem(CHUNK_RECOVERY_KEY, "1");
+    window.location.reload();
   }
 
   private handleReload = () => {
+    window.sessionStorage.removeItem(CHUNK_RECOVERY_KEY);
     window.location.reload();
   };
 

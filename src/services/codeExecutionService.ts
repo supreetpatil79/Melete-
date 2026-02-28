@@ -60,6 +60,45 @@ export interface ExecuteCodeResponse {
   results: ExecuteTestResult[];
 }
 
+export interface CodeSubmissionRequest {
+  userId: string;
+  problemId: string;
+  problemTitle: string;
+  language: string;
+  runtimeName?: string;
+  sourceCode: string;
+  totalTests: number;
+  passedTests: number;
+  tookMs: number;
+}
+
+export interface CodeSubmissionResponse {
+  id: string;
+  submittedAt: string;
+  passedTests: number;
+  totalTests: number;
+  tookMs: number;
+  status: "accepted" | "partial";
+}
+
+export interface CodeSubmissionRow {
+  id: string;
+  problemId: string;
+  problemTitle: string;
+  language: string;
+  runtimeName?: string;
+  passedTests: number;
+  totalTests: number;
+  tookMs: number;
+  submittedAt: string;
+  status: "accepted" | "partial";
+}
+
+interface CodeSubmissionListPayload {
+  total: number;
+  rows: CodeSubmissionRow[];
+}
+
 interface LanguagesPayload {
   total: number;
   provider?: string;
@@ -111,4 +150,51 @@ export const executeCode = async (request: ExecuteCodeRequest): Promise<ExecuteC
   }
 
   return (await response.json()) as ExecuteCodeResponse;
+};
+
+export const submitCode = async (request: CodeSubmissionRequest): Promise<CodeSubmissionResponse> => {
+  const response = await fetch(`${codeApiBase}/submissions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  return (await response.json()) as CodeSubmissionResponse;
+};
+
+export const fetchCodeSubmissions = async (request: {
+  userId: string;
+  limit?: number;
+  problemId?: string;
+}): Promise<CodeSubmissionRow[]> => {
+  const params = new URLSearchParams({
+    userId: request.userId,
+  });
+  if (request.limit) {
+    params.set("limit", String(request.limit));
+  }
+  if (request.problemId) {
+    params.set("problemId", request.problemId);
+  }
+
+  const response = await fetch(`${codeApiBase}/submissions?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as CodeSubmissionListPayload;
+  return payload.rows;
 };

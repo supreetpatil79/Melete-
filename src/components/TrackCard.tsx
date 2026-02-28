@@ -15,10 +15,10 @@ interface TrackCardProps {
 
 const TrackCard = ({ id, title, description, icon: Icon, courseCount, duration, level, color }: TrackCardProps) => {
   return (
-    <motion.div whileHover={{ y: -2 }} transition={{ type: "spring", stiffness: 260, damping: 22 }}>
+    <motion.div>
       <Link
         to={`/tracks/${id}`}
-        className="group flex h-full flex-col gap-4 rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+        className="motion-card group flex h-full flex-col gap-4 rounded-2xl border border-border bg-card p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}1f`, color }}>

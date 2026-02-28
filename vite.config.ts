@@ -25,6 +25,10 @@ export default defineConfig(({ mode }) => ({
         target: "http://127.0.0.1:4000",
         changeOrigin: true,
       },
+      "^/search(?:$|/autocomplete$|/reindex$|/engagement$)": {
+        target: "http://127.0.0.1:4000",
+        changeOrigin: true,
+      },
     },
     hmr: {
       overlay: false,

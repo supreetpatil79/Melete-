@@ -59,7 +59,7 @@ const TrackDetail = () => {
               <span className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium">{track.level}</span>
             </div>
           </div>
-          <button className="shrink-0 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground shadow-glow transition-all hover:scale-105">
+          <button className="liquid-glass-button motion-interactive motion-button shrink-0 rounded-xl !bg-primary px-6 py-3 font-semibold !text-primary-foreground shadow-glow">
             Start Track
           </button>
         </motion.div>

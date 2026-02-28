@@ -309,18 +309,38 @@ const buildFileName = (name: string): string => {
   return `${safeName || "learner"}-melete-wrap-up-${datePart}.pdf`;
 };
 
+const triggerPdfDownload = (blob: Blob, fileName: string): void => {
+  const objectUrl = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.rel = "noopener noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+
+  const supportsDownloadAttribute = "download" in HTMLAnchorElement.prototype;
+  if (supportsDownloadAttribute) {
+    anchor.click();
+  } else {
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+  }
+
+  anchor.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 30_000);
+};
+
 export const downloadLearningWrapUpPdf = (input: LearningWrapUpPdfInput): void => {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    throw new Error("PDF export is only available in a browser environment.");
+  }
+
   const entries = buildWrapUpEntries(input);
   const pages = paginateEntries(entries);
   const pdfBytes = buildPdfDocument(pages);
 
   const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = downloadUrl;
-  anchor.download = buildFileName(input.learner.name);
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(downloadUrl);
+  triggerPdfDownload(blob, buildFileName(input.learner.name));
 };

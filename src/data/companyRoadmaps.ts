@@ -8,6 +8,7 @@ export interface RoadmapStep {
 export interface CompanyRoadmap {
   id: string;
   company: string;
+  logoUrl: string;
   tagline: string;
   brandFrom: string;
   brandTo: string;
@@ -22,6 +23,7 @@ export const companyRoadmaps: CompanyRoadmap[] = [
   {
     id: "google",
     company: "Google",
+    logoUrl: "/logos/google.svg",
     tagline: "Scale-first engineering with product impact and reliability.",
     brandFrom: "#1a73e8",
     brandTo: "#34a853",
@@ -100,6 +102,7 @@ export const companyRoadmaps: CompanyRoadmap[] = [
   {
     id: "microsoft",
     company: "Microsoft",
+    logoUrl: "/logos/microsoft.svg",
     tagline: "Product engineering with cloud-native delivery and collaboration.",
     brandFrom: "#2563eb",
     brandTo: "#0ea5e9",
@@ -178,6 +181,7 @@ export const companyRoadmaps: CompanyRoadmap[] = [
   {
     id: "amazon",
     company: "Amazon",
+    logoUrl: "/logos/amazon.svg",
     tagline: "Customer-obsessed engineering with high ownership and scale.",
     brandFrom: "#f59e0b",
     brandTo: "#fb7185",
@@ -256,6 +260,7 @@ export const companyRoadmaps: CompanyRoadmap[] = [
   {
     id: "meta",
     company: "Meta",
+    logoUrl: "/logos/meta.svg",
     tagline: "Fast execution and product sense with strong coding rigor.",
     brandFrom: "#0ea5e9",
     brandTo: "#6366f1",
@@ -334,6 +339,7 @@ export const companyRoadmaps: CompanyRoadmap[] = [
   {
     id: "nvidia",
     company: "NVIDIA",
+    logoUrl: "/logos/nvidia.svg",
     tagline: "High-performance engineering for AI, systems, and acceleration.",
     brandFrom: "#22c55e",
     brandTo: "#0891b2",

@@ -43,6 +43,91 @@ describe("backend search API", () => {
     expect(payload.total).toBeGreaterThan(0);
     expect(Array.isArray(payload.results)).toBe(true);
     expect(payload.results[0]).toHaveProperty("score");
+    expect(payload.backend).toBe("local");
+  });
+
+  it("returns ranked search suggestions", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/search/suggest",
+      query: {
+        q: "machne",
+        type: "all",
+        limit: "6",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(Array.isArray(payload.suggestions)).toBe(true);
+    expect(payload.suggestions.length).toBeGreaterThan(0);
+    expect(payload.suggestions[0]).toHaveProperty("score");
+    expect(payload.backend).toBe("local");
+  });
+
+  it("returns unified multi-section search results", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/search",
+      query: {
+        q: "run submit workflow",
+        type: "all",
+        limit: "10",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.total).toBeGreaterThan(0);
+    expect(Array.isArray(payload.results)).toBe(true);
+    expect(payload.results[0]).toHaveProperty("section");
+    expect(payload.results[0]).toHaveProperty("highlights");
+  });
+
+  it("returns unified autocomplete results", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/search/autocomplete",
+      query: {
+        q: "road",
+        limit: "8",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(Array.isArray(payload.results)).toBe(true);
+    expect(payload.results.length).toBeGreaterThan(0);
+    expect(payload.results[0]).toHaveProperty("score");
+  });
+
+  it("accepts search engagement payloads", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/search/engagement",
+      payload: {
+        userId: "u1",
+        type: "problem",
+        tags: ["arrays", "hashmap"],
+        query: "two sum",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.status).toBe("ok");
+  });
+
+  it("returns 503 for search reindex when Elasticsearch is not configured", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/search/reindex",
+      payload: {
+        reason: "test",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
   });
 
   it("uses cache for repeated queries", async () => {
@@ -63,12 +148,46 @@ describe("backend search API", () => {
     expect(payload.cache).toBe("hit");
   });
 
+  it("supports advanced operators in search queries", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/search",
+      query: {
+        q: "deployment -full +docker",
+        type: "all",
+        limit: "12",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.total).toBeGreaterThan(0);
+    expect(
+      payload.results.every((item: { title: string; description: string; trackTitle: string }) => {
+        const combined = `${item.title} ${item.description} ${item.trackTitle}`.toLowerCase();
+        return combined.includes("docker") && !combined.includes("full");
+      }),
+    ).toBe(true);
+  });
+
   it("rejects invalid query parameters", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/search",
       query: {
         q: "a",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("rejects invalid suggestion query parameters", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/search/suggest",
+      query: {
+        q: "",
       },
     });
 
@@ -82,6 +201,62 @@ describe("backend search API", () => {
     });
 
     expect(response.statusCode).toBe(503);
+  });
+
+  it("stores and returns code submissions", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/code/submissions",
+      payload: {
+        userId: "u1",
+        problemId: "lc-two-sum",
+        problemTitle: "Two Sum",
+        language: "javascript",
+        runtimeName: "JavaScript (Node.js)",
+        sourceCode: "function twoSum(){ return [0,1]; }",
+        totalTests: 3,
+        passedTests: 3,
+        tookMs: 420,
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const createPayload = createResponse.json();
+    expect(createPayload.status).toBe("accepted");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/code/submissions",
+      query: {
+        userId: "u1",
+        problemId: "lc-two-sum",
+        limit: "5",
+      },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    const listPayload = listResponse.json();
+    expect(listPayload.total).toBeGreaterThan(0);
+    expect(listPayload.rows[0].problemId).toBe("lc-two-sum");
+  });
+
+  it("validates submission payloads", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/code/submissions",
+      payload: {
+        userId: "u1",
+        problemId: "x",
+        problemTitle: "Broken",
+        language: "javascript",
+        sourceCode: "a",
+        totalTests: 1,
+        passedTests: 2,
+        tookMs: 1,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 
   it("returns 503 for AI profile insight when OpenAI is not configured", async () => {

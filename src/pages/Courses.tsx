@@ -43,7 +43,7 @@ const CoursesPage = () => {
                     <button
                       key={branch.id}
                       onClick={() => setSelectedBranch(selectedBranch === branch.id ? "" : branch.id)}
-                      className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      className={`liquid-glass-button rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                         selectedBranch === branch.id
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background text-foreground hover:border-primary/50"

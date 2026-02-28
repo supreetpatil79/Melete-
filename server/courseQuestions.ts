@@ -299,19 +299,23 @@ const buildQuery = (request: CourseQuestionRequest): string => {
   return parts.join(" ").trim() || DEFAULT_QUERY;
 };
 
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+const withTimeout = async <T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<T> => {
   const controller = new AbortController();
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    const id = setTimeout(() => {
-      controller.abort();
-      reject(new Error("Request timed out"));
-    }, timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    promise.finally(() => clearTimeout(id)).catch(() => undefined);
-  });
-
-  const race = await Promise.race([promise, timeoutPromise]);
-  return race as T;
+  try {
+    return await operation(controller.signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const dedupeQuestions = (questions: CourseQuestion[]): CourseQuestion[] => {
@@ -414,7 +418,10 @@ const fetchStackExchangeQuestions = async (
   });
 
   const response = await withTimeout(
-    fetch(`https://api.stackexchange.com/2.3/search/advanced?${params.toString()}`),
+    (signal) =>
+      fetch(`https://api.stackexchange.com/2.3/search/advanced?${params.toString()}`, {
+        signal,
+      }),
     8_000,
   );
 
@@ -459,7 +466,10 @@ const fetchCodeforcesDataset = async (tag: string): Promise<CodeforcesResponse["
   }
 
   const response = await withTimeout(
-    fetch(`https://codeforces.com/api/problemset.problems?tags=${encodeURIComponent(tag)}`),
+    (signal) =>
+      fetch(`https://codeforces.com/api/problemset.problems?tags=${encodeURIComponent(tag)}`, {
+        signal,
+      }),
     8_000,
   );
 

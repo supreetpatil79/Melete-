@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ExternalLink, Newspaper, RefreshCw, Sparkles } from "lucide-react";
+import { ExternalLink, Newspaper, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { getLearnerDnaSummary, getLearnerProfile } from "@/services/learnerProfileService";
 import { listTechViseThreads } from "@/services/techviseService";
 import { fetchTechNews, type TechNewsArticle, type TechNewsResponse } from "@/services/techNewsService";
+import { searchTechNewsArticles } from "@/shared/articleSearch";
 
 const formatPublishedAt = (value: string): string => {
   const parsed = Date.parse(value);
@@ -24,6 +26,7 @@ const WhatsUpInTechPage = () => {
   const [feed, setFeed] = useState<TechNewsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const requestPayload = useMemo(() => {
     if (!user) {
@@ -83,8 +86,13 @@ const WhatsUpInTechPage = () => {
     void loadFeed();
   }, [requestPayload]);
 
-  const personalizedArticles = (feed?.articles ?? []).filter((article) => article.relevance === "personalized");
-  const generalArticles = (feed?.articles ?? []).filter((article) => article.relevance === "general");
+  const filteredArticles = useMemo(
+    () => searchTechNewsArticles(feed?.articles ?? [], searchQuery, 80),
+    [feed?.articles, searchQuery],
+  );
+  const personalizedArticles = filteredArticles.filter((article) => article.relevance === "personalized");
+  const generalArticles = filteredArticles.filter((article) => article.relevance === "general");
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   const renderArticle = (article: TechNewsArticle) => (
     <article key={article.id} className="rounded-xl border border-border bg-card p-4">
@@ -132,6 +140,35 @@ const WhatsUpInTechPage = () => {
             <span className="rounded-md bg-secondary px-2 py-1">cache: {feed.cache}</span>
             <span className="rounded-md bg-secondary px-2 py-1">{feed.personalizedCount} personalized</span>
             <span className="rounded-md bg-secondary px-2 py-1">{feed.generalCount} general</span>
+            {hasSearchQuery && (
+              <span className="rounded-md bg-secondary px-2 py-1">
+                {filteredArticles.length} matches for "{searchQuery.trim()}"
+              </span>
+            )}
+          </div>
+        )}
+
+        {!isLoading && !error && (
+          <div className="mb-6 rounded-xl border border-border bg-card p-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder='Search news by topic, source, or query... (supports "phrase", +must, -exclude)'
+                className="h-11 pl-10 pr-10"
+              />
+              {hasSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="liquid-glass-button absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -152,6 +189,12 @@ const WhatsUpInTechPage = () => {
 
         {!isLoading && !error && (
           <div className="space-y-8">
+            {hasSearchQuery && filteredArticles.length === 0 && (
+              <Card className="border border-border bg-card p-4 text-sm text-muted-foreground">
+                No matching updates found. Try broader keywords or remove required/excluded terms.
+              </Card>
+            )}
+
             <section>
               <div className="mb-4 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />

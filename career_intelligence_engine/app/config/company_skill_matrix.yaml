@@ -1,0 +1,255 @@
+companies:
+  google:
+    name: Google
+    logo_url: https://logo.clearbit.com/google.com
+    roles:
+      internship:
+        required_skills:
+          - name: data structures
+            weight: 0.22
+            min_proficiency: intermediate
+          - name: algorithms
+            weight: 0.20
+            min_proficiency: intermediate
+          - name: python
+            weight: 0.15
+            min_proficiency: intermediate
+          - name: system design
+            weight: 0.12
+            min_proficiency: beginner
+          - name: sql
+            weight: 0.08
+            min_proficiency: beginner
+          - name: computer networks
+            weight: 0.11
+            min_proficiency: beginner
+          - name: operating systems
+            weight: 0.12
+            min_proficiency: beginner
+      fte:
+        required_skills:
+          - name: data structures
+            weight: 0.18
+            min_proficiency: advanced
+          - name: algorithms
+            weight: 0.18
+            min_proficiency: advanced
+          - name: system design
+            weight: 0.20
+            min_proficiency: intermediate
+          - name: distributed systems
+            weight: 0.16
+            min_proficiency: intermediate
+          - name: python
+            weight: 0.10
+            min_proficiency: intermediate
+          - name: c++
+            weight: 0.10
+            min_proficiency: intermediate
+          - name: computer networks
+            weight: 0.08
+            min_proficiency: intermediate
+
+  microsoft:
+    name: Microsoft
+    logo_url: https://logo.clearbit.com/microsoft.com
+    roles:
+      internship:
+        required_skills:
+          - name: data structures
+            weight: 0.2
+            min_proficiency: intermediate
+          - name: algorithms
+            weight: 0.18
+            min_proficiency: intermediate
+          - name: c++
+            weight: 0.14
+            min_proficiency: intermediate
+          - name: javascript
+            weight: 0.10
+            min_proficiency: beginner
+          - name: sql
+            weight: 0.10
+            min_proficiency: beginner
+          - name: operating systems
+            weight: 0.14
+            min_proficiency: beginner
+          - name: computer networks
+            weight: 0.14
+            min_proficiency: beginner
+      fte:
+        required_skills:
+          - name: system design
+            weight: 0.20
+            min_proficiency: intermediate
+          - name: distributed systems
+            weight: 0.18
+            min_proficiency: intermediate
+          - name: data structures
+            weight: 0.14
+            min_proficiency: advanced
+          - name: algorithms
+            weight: 0.14
+            min_proficiency: advanced
+          - name: c#
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: azure
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: sql
+            weight: 0.10
+            min_proficiency: intermediate
+
+  amazon:
+    name: Amazon
+    logo_url: https://logo.clearbit.com/amazon.com
+    roles:
+      internship:
+        required_skills:
+          - name: data structures
+            weight: 0.22
+            min_proficiency: intermediate
+          - name: algorithms
+            weight: 0.20
+            min_proficiency: intermediate
+          - name: java
+            weight: 0.14
+            min_proficiency: intermediate
+          - name: system design
+            weight: 0.12
+            min_proficiency: beginner
+          - name: sql
+            weight: 0.10
+            min_proficiency: beginner
+          - name: operating systems
+            weight: 0.11
+            min_proficiency: beginner
+          - name: computer networks
+            weight: 0.11
+            min_proficiency: beginner
+      fte:
+        required_skills:
+          - name: distributed systems
+            weight: 0.22
+            min_proficiency: intermediate
+          - name: system design
+            weight: 0.20
+            min_proficiency: intermediate
+          - name: java
+            weight: 0.14
+            min_proficiency: advanced
+          - name: aws
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: data structures
+            weight: 0.12
+            min_proficiency: advanced
+          - name: algorithms
+            weight: 0.10
+            min_proficiency: advanced
+          - name: sql
+            weight: 0.10
+            min_proficiency: intermediate
+
+  nvidia:
+    name: NVIDIA
+    logo_url: https://logo.clearbit.com/nvidia.com
+    roles:
+      internship:
+        required_skills:
+          - name: c++
+            weight: 0.18
+            min_proficiency: intermediate
+          - name: python
+            weight: 0.16
+            min_proficiency: intermediate
+          - name: data structures
+            weight: 0.15
+            min_proficiency: intermediate
+          - name: algorithms
+            weight: 0.15
+            min_proficiency: intermediate
+          - name: linux
+            weight: 0.14
+            min_proficiency: beginner
+          - name: computer architecture
+            weight: 0.12
+            min_proficiency: beginner
+          - name: machine learning
+            weight: 0.10
+            min_proficiency: beginner
+      fte:
+        required_skills:
+          - name: c++
+            weight: 0.20
+            min_proficiency: advanced
+          - name: cuda
+            weight: 0.18
+            min_proficiency: intermediate
+          - name: machine learning
+            weight: 0.16
+            min_proficiency: intermediate
+          - name: deep learning
+            weight: 0.14
+            min_proficiency: intermediate
+          - name: linux
+            weight: 0.10
+            min_proficiency: intermediate
+          - name: computer architecture
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: python
+            weight: 0.10
+            min_proficiency: intermediate
+
+  amd:
+    name: AMD
+    logo_url: https://logo.clearbit.com/amd.com
+    roles:
+      internship:
+        required_skills:
+          - name: c++
+            weight: 0.18
+            min_proficiency: intermediate
+          - name: data structures
+            weight: 0.16
+            min_proficiency: intermediate
+          - name: operating systems
+            weight: 0.14
+            min_proficiency: beginner
+          - name: computer architecture
+            weight: 0.16
+            min_proficiency: beginner
+          - name: python
+            weight: 0.12
+            min_proficiency: beginner
+          - name: machine learning
+            weight: 0.12
+            min_proficiency: beginner
+          - name: git
+            weight: 0.12
+            min_proficiency: beginner
+      fte:
+        required_skills:
+          - name: c++
+            weight: 0.20
+            min_proficiency: advanced
+          - name: computer architecture
+            weight: 0.18
+            min_proficiency: advanced
+          - name: distributed systems
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: operating systems
+            weight: 0.14
+            min_proficiency: intermediate
+          - name: machine learning
+            weight: 0.12
+            min_proficiency: intermediate
+          - name: python
+            weight: 0.10
+            min_proficiency: intermediate
+          - name: system design
+            weight: 0.14
+            min_proficiency: intermediate

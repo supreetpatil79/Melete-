@@ -18,10 +18,7 @@ const CourseCard = ({ id, title, description, duration, lessons, progress, track
 
   return (
     <Link to={href}>
-      <motion.div
-        whileHover={{ y: -2 }}
-        className="group flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
-      >
+      <motion.div className="motion-card group flex h-full flex-col gap-3 rounded-2xl border border-border bg-card p-5">
         <div className="flex items-start justify-between gap-3">
           <h4 className="text-base font-semibold text-foreground transition-colors group-hover:text-primary">{title}</h4>
           {progress !== undefined && progress >= 100 && <CheckCircle2 className="h-5 w-5 shrink-0 text-accent" />}
@@ -44,7 +41,7 @@ const CourseCard = ({ id, title, description, duration, lessons, progress, track
           <div>
             <div className="h-1.5 w-full rounded-full bg-secondary">
               <div
-                className="h-1.5 rounded-full bg-primary transition-all"
+                className="h-1.5 rounded-full bg-primary"
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>

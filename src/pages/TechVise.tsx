@@ -234,7 +234,7 @@ const TechVisePage = () => {
                       key={thread.id}
                       type="button"
                       onClick={() => setSelectedThreadId(thread.id)}
-                      className={`w-full rounded-md border p-3 text-left transition-colors ${
+                      className={`liquid-glass-button w-full rounded-md border p-3 text-left transition-colors ${
                         active
                           ? "border-primary/40 bg-primary/5"
                           : "border-border bg-background/60 hover:border-primary/30"
@@ -304,7 +304,7 @@ const TechVisePage = () => {
                               type="button"
                               onClick={() => handleVote(answer.id, 1)}
                               disabled={!viewer}
-                              className="rounded border border-border px-2 py-1 text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
+                              className="liquid-glass-button rounded border border-border px-2 py-1 text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                             >
                               <ChevronUp className="h-3.5 w-3.5" />
                             </button>
@@ -315,7 +315,7 @@ const TechVisePage = () => {
                               type="button"
                               onClick={() => handleVote(answer.id, -1)}
                               disabled={!viewer}
-                              className="rounded border border-border px-2 py-1 text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
+                              className="liquid-glass-button rounded border border-border px-2 py-1 text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                             >
                               <ChevronDown className="h-3.5 w-3.5" />
                             </button>

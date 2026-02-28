@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Editor from "@monaco-editor/react";
 import { Play, Check, X, Copy, RefreshCw, Lightbulb, Send, Loader2, Brain } from "lucide-react";
@@ -18,7 +18,10 @@ import {
 } from "@/components/ui/select";
 import {
   executeCode,
+  fetchCodeSubmissions,
   fetchExecutionLanguages,
+  submitCode,
+  type CodeSubmissionRow,
   type ExecuteTestResult,
   type ExecutionLanguage,
 } from "@/services/codeExecutionService";
@@ -59,10 +62,10 @@ interface PracticeProblemProps {
   onExecutionComplete?: (payload: PracticeExecutionPayload) => void;
 }
 
-const difficultyColor = {
-  Easy: "text-green-600",
-  Medium: "text-yellow-600",
-  Hard: "text-red-600",
+const difficultyBadgeTone = {
+  Easy: "border-[var(--success)] bg-[var(--success)] text-white",
+  Medium: "border-[#f59e0b] bg-[#f59e0b] text-white",
+  Hard: "border-[var(--danger)] bg-[var(--danger)] text-white",
 } as const;
 
 const DRAFT_STORAGE_PREFIX = "learnpath_practice_draft_";
@@ -219,6 +222,12 @@ const PracticeProblem = ({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [restoredFromDraft, setRestoredFromDraft] = useState(false);
   const [runAttempts, setRunAttempts] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recentSubmissions, setRecentSubmissions] = useState<CodeSubmissionRow[]>([]);
+  const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [isResizing, setIsResizing] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -315,6 +324,65 @@ const PracticeProblem = ({
       window.clearTimeout(timeoutId);
     };
   }, [code, draftStorageKey]);
+
+  useEffect(() => {
+    if (!user) {
+      setRecentSubmissions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadSubmissions = async () => {
+      setIsLoadingSubmissions(true);
+      try {
+        const rows = await fetchCodeSubmissions({
+          userId: user.id,
+          problemId: id,
+          limit: 5,
+        });
+        if (cancelled) return;
+        setRecentSubmissions(rows);
+      } catch {
+        if (cancelled) return;
+        setRecentSubmissions([]);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSubmissions(false);
+        }
+      }
+    };
+
+    void loadSubmissions();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const container = splitContainerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const next = ((event.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(65, Math.max(35, next));
+      setLeftPanelWidth(clamped);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizing(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isResizing]);
 
   const handleRunTests = useCallback(async () => {
     if (!selectedLanguageId) {
@@ -530,6 +598,48 @@ const PracticeProblem = ({
     }
   };
 
+  const handleSubmitSolution = async () => {
+    if (!allTestsPassed) {
+      toast.error("Pass all test cases before submitting.");
+      return;
+    }
+    if (!user) {
+      toast.error("Login required to submit.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await submitCode({
+        userId: user.id,
+        problemId: id,
+        problemTitle: title,
+        language,
+        runtimeName: selectedLanguage?.name,
+        sourceCode: code,
+        totalTests: testResults.length,
+        passedTests,
+        tookMs:
+          testResults.reduce((sum, result) => sum + Number(result.time ?? 0), 0) > 0
+            ? Math.round(testResults.reduce((sum, result) => sum + Number(result.time ?? 0), 0) * 1000)
+            : 0,
+      });
+
+      const rows = await fetchCodeSubmissions({
+        userId: user.id,
+        problemId: id,
+        limit: 5,
+      });
+      setRecentSubmissions(rows);
+      toast.success(`Submission accepted • #${response.id.slice(-6).toUpperCase()}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Submission failed";
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleCopyTemplate = async () => {
     await navigator.clipboard.writeText(code);
     toast.success("Code copied to clipboard");
@@ -557,110 +667,132 @@ const PracticeProblem = ({
 
   return (
     <div className="space-y-6">
-      <Card className="border border-border/50 bg-gradient-card p-6">
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">{title}</h2>
-            <p className={`mt-2 text-sm font-semibold ${difficultyColor[difficulty]}`}>
-              {difficulty} • {selectedLanguage?.name ?? language.toUpperCase()}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Problem ID: {id}</p>
-          </div>
-          {allTestsPassed && (
-            <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2">
-              <Check className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-600">Solved</span>
-            </div>
-          )}
-        </div>
-        <p className="text-muted-foreground">{description}</p>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <Card className="border border-border/50 bg-muted/30 p-6">
-            <h3 className="mb-4 font-semibold text-foreground">Problem Details</h3>
-            <div className="space-y-4 text-sm text-muted-foreground">
-              <div>
-                <h4 className="mb-2 font-medium text-foreground">Input</h4>
-                <p>Read from standard input. Use each test case input exactly as provided.</p>
-              </div>
-              <div>
-                <h4 className="mb-2 font-medium text-foreground">Output</h4>
-                <p>Print only the expected value per test case.</p>
-              </div>
-              <div>
-                <h4 className="mb-2 font-medium text-foreground">Test Cases</h4>
-                <ul className="list-disc list-inside space-y-1">
-                  {testCases.map((testCase, index) => (
-                    <li key={`${index}-${testCase.input.slice(0, 20)}`}>
-                      Case {index + 1}: expected {testCase.expected}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </Card>
-
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-lg border border-border/50 bg-blue-500/5 p-4"
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div ref={splitContainerRef} className="relative flex min-h-[820px] flex-col lg:flex-row">
+          <section
+            className="w-full border-b border-border lg:border-b-0 lg:border-r"
+            style={{ flexBasis: `${leftPanelWidth}%` }}
           >
-            <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleHintAction}
-                disabled={isLoadingHint}
-                className="flex items-center gap-2 font-medium text-blue-600 transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isLoadingHint ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Lightbulb className="h-4 w-4" />
+            <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-5">
+              <h2 className="text-2xl font-bold text-foreground">{title}</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${difficultyBadgeTone[difficulty]}`}>
+                  {difficulty}
+                </span>
+                <span className="rounded-md border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+                  {selectedLanguage?.name ?? language.toUpperCase()}
+                </span>
+                {topicTitle && (
+                  <span className="rounded-md border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+                    {topicTitle}
+                  </span>
                 )}
-                {showHint ? "Hide Hint" : activeHint ? "Show Hint" : "Get Adaptive Hint"}
-              </button>
-
-              {testResults.length > 0 && (
-                <Button size="sm" variant="outline" onClick={() => void fetchAdaptiveHint()} disabled={isLoadingHint}>
-                  Refresh Hint
-                </Button>
-              )}
+                <span className="rounded-md border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+                  Problem ID: {id}
+                </span>
+              </div>
             </div>
 
-            {showHint && activeHint && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                className="mt-3 space-y-2 text-sm text-muted-foreground"
-              >
-                <p>{activeHint.hint}</p>
-                <div>
-                  <p className="font-medium text-foreground">Nudges</p>
-                  <ul className="mt-1 list-disc list-inside">
-                    {activeHint.nudges.map((nudge) => (
-                      <li key={nudge}>{nudge}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">Checklist</p>
-                  <ul className="mt-1 list-disc list-inside">
-                    {activeHint.checklist.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </motion.div>
-        </div>
+            <div className="h-[calc(100vh-200px)] space-y-6 overflow-y-auto p-6">
+              <section>
+                <h3 className="text-lg font-semibold text-foreground">Description</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+              </section>
 
-        <div className="space-y-4">
-          <Card className="space-y-4 border border-border/50 bg-gradient-card p-6">
+              <section>
+                <h3 className="text-lg font-semibold text-foreground">Examples</h3>
+                <div className="mt-2 space-y-2">
+                  {testCases.slice(0, 2).map((testCase, index) => (
+                    <div key={`${index}-${testCase.input}`} className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-sm font-semibold text-foreground">Example {index + 1}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Input: {testCase.input}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Output: {testCase.expected}</p>
+                      {testCase.explanation && (
+                        <p className="mt-1 text-xs text-muted-foreground">Explanation: {testCase.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-lg font-semibold text-foreground">Constraints</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  <li>Read input exactly from stdin and match expected output format.</li>
+                  <li>Optimize for correctness first, then performance.</li>
+                  <li>Keep edge cases covered for empty or minimum-size input.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="text-lg font-semibold text-foreground">Test Cases</h3>
+                <div className="mt-2 space-y-2">
+                  {testCases.map((testCase, index) => (
+                    <div key={`${index}-${testCase.input.slice(0, 16)}`} className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-sm font-semibold text-foreground">Case {index + 1}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Input: {testCase.input}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Expected: {testCase.expected}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleHintAction}
+                    disabled={isLoadingHint}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isLoadingHint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
+                    {showHint ? "Hide Hint" : activeHint ? "Show Hint" : "Get Adaptive Hint"}
+                  </button>
+
+                  {testResults.length > 0 && (
+                    <Button size="sm" variant="outline" onClick={() => void fetchAdaptiveHint()} disabled={isLoadingHint}>
+                      Refresh Hint
+                    </Button>
+                  )}
+                </div>
+
+                {showHint && activeHint && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 space-y-2 text-sm text-muted-foreground"
+                  >
+                    <p>{activeHint.hint}</p>
+                    <div>
+                      <p className="font-medium text-foreground">Nudges</p>
+                      <ul className="mt-1 list-disc list-inside">
+                        {activeHint.nudges.map((nudge) => (
+                          <li key={nudge}>{nudge}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </motion.div>
+                )}
+              </section>
+            </div>
+          </section>
+
+          <button
+            type="button"
+            className="absolute bottom-0 top-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize items-center justify-center lg:flex"
+            style={{ left: `${leftPanelWidth}%` }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setIsResizing(true);
+            }}
+            aria-label="Resize coding panels"
+          >
+            <span className="h-full w-px bg-border" />
+          </button>
+
+          <section className="flex-1 space-y-4 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="font-semibold text-foreground">IDE</h3>
+              <h3 className="text-lg font-semibold text-foreground">Code Editor</h3>
               <div className="flex flex-wrap items-center gap-2">
                 {isLoadingLanguages ? (
                   <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -673,7 +805,7 @@ const PracticeProblem = ({
                     onValueChange={handleLanguageChange}
                     disabled={languages.length === 0}
                   >
-                    <SelectTrigger className="h-8 w-[220px]">
+                    <SelectTrigger className="w-[240px]">
                       <SelectValue placeholder="Choose language" />
                     </SelectTrigger>
                     <SelectContent>
@@ -685,7 +817,6 @@ const PracticeProblem = ({
                     </SelectContent>
                   </Select>
                 )}
-
                 <Button size="sm" variant="outline" onClick={handleCopyTemplate} className="gap-2">
                   <Copy className="h-3.5 w-3.5" />
                   Copy
@@ -697,15 +828,17 @@ const PracticeProblem = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              <span>{restoredFromDraft ? "Draft restored" : "Fresh template loaded"}</span>
-              <span>{lastSavedLabel ? `Autosaved at ${lastSavedLabel}` : "Autosave enabled"}</span>
-              <span>Run with Cmd/Ctrl + Enter</span>
+            <div className="rounded-xl border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>{restoredFromDraft ? "Draft restored" : "Fresh template loaded"}</span>
+                <span>{lastSavedLabel ? `Autosaved at ${lastSavedLabel}` : "Autosave enabled"}</span>
+                <span>Run with Cmd/Ctrl + Enter</span>
+              </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-border">
+            <div className="overflow-hidden rounded-xl border border-border">
               <Editor
-                height="340px"
+                height="440px"
                 language={monacoLanguage}
                 theme={editorTheme}
                 value={code}
@@ -721,39 +854,71 @@ const PracticeProblem = ({
               />
             </div>
 
-            {runtimeError && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-600">
-                {runtimeError}
-              </div>
-            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button onClick={handleRunTests} variant="secondary" disabled={isRunning || !selectedLanguageId} className="h-11 w-full">
+                {isRunning ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Run
+                  </>
+                )}
+              </Button>
+              <Button
+                className="h-11 w-full"
+                disabled={!allTestsPassed || isSubmitting}
+                onClick={() => void handleSubmitSolution()}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Submit
+                  </>
+                )}
+              </Button>
+            </div>
 
-            <Button
-              onClick={handleRunTests}
-              disabled={isRunning || !selectedLanguageId}
-              className="w-full transition-transform hover:scale-[1.01]"
-            >
-              {isRunning ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Running Tests...
-                </>
-              ) : (
-                <>
-                  <Play className="mr-2 h-4 w-4" />
-                  Run Tests
-                </>
-              )}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Attempts this session: {runAttempts}
-            </p>
-          </Card>
+            <div className="rounded-xl border border-border bg-secondary p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Output Console</p>
+              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {runtimeError && <p className="text-[var(--danger)]">{runtimeError}</p>}
+                {!runtimeError && testResults.length === 0 && <p>Run tests to view output.</p>}
+                {testResults.length > 0 && (
+                  <>
+                    <p>
+                      Passed {passedTests}/{testResults.length} tests
+                    </p>
+                    <p>Attempts this session: {runAttempts}</p>
+                    <p>{allTestsPassed ? "All tests passed. Ready to submit." : "Fix failing tests and run again."}</p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Submission Result</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {allTestsPassed
+                  ? "All checks passed. Submit to record your accepted solution."
+                  : "Submission is locked until every test case passes."}
+              </p>
+            </div>
+          </section>
         </div>
       </div>
 
       {testResults.length > 0 && (
-        <Card className="border border-border/50 bg-gradient-card p-6">
-          <h3 className="mb-4 font-semibold text-foreground">
+        <Card className="border border-border bg-card">
+          <h3 className="mb-4 text-lg font-semibold text-foreground">
             Test Results: {passedTests}/{testResults.length} Passed
           </h3>
           <div className="space-y-3">
@@ -763,10 +928,8 @@ const PracticeProblem = ({
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className={`rounded-lg border p-4 ${
-                  result.passed
-                    ? "border-green-500/20 bg-green-500/5"
-                    : "border-red-500/20 bg-red-500/5"
+                className={`rounded-xl border p-4 ${
+                  result.passed ? "border-[var(--success)] bg-background" : "border-[var(--danger)] bg-background"
                 }`}
               >
                 <div className="mb-2 flex items-start justify-between">
@@ -779,12 +942,12 @@ const PracticeProblem = ({
                     </p>
                   </div>
                   {result.passed ? (
-                    <span className="flex items-center gap-1 text-sm text-green-600">
+                    <span className="flex items-center gap-1 text-sm text-[var(--success)]">
                       <Check className="h-4 w-4" />
                       Passed
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 text-sm text-red-600">
+                    <span className="flex items-center gap-1 text-sm text-[var(--danger)]">
                       <X className="h-4 w-4" />
                       Failed
                     </span>
@@ -792,68 +955,33 @@ const PracticeProblem = ({
                 </div>
 
                 <div className="space-y-1 text-sm text-muted-foreground">
-                  <p>
+                  <p className="break-words">
                     <span className="font-medium text-foreground">Input:</span> {result.input}
                   </p>
                   {result.expectedOutput !== undefined && (
-                    <p>
-                      <span className="font-medium text-foreground">Expected:</span>{" "}
-                      {result.expectedOutput}
+                    <p className="break-words">
+                      <span className="font-medium text-foreground">Expected:</span> {result.expectedOutput}
                     </p>
                   )}
                   {result.stdout !== undefined && (
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Output:</span> {result.stdout}
                     </p>
                   )}
                   {result.stderr && (
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Stderr:</span> {result.stderr}
                     </p>
                   )}
                   {result.compileOutput && (
-                    <p>
-                      <span className="font-medium text-foreground">Compile:</span>{" "}
-                      {result.compileOutput}
+                    <p className="break-words">
+                      <span className="font-medium text-foreground">Compile:</span> {result.compileOutput}
                     </p>
                   )}
                   {result.message && (
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Message:</span> {result.message}
                     </p>
-                  )}
-                  {result.diagnostic && !result.passed && (
-                    <div className="mt-2 rounded-md border border-blue-500/20 bg-blue-500/5 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                        Compiler Insight ({result.diagnostic.category})
-                      </p>
-                      <p className="mt-1 text-sm text-foreground">{result.diagnostic.summary}</p>
-                      {result.diagnostic.lineHints.length > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Line hints: {result.diagnostic.lineHints.join(", ")}
-                        </p>
-                      )}
-                      {result.diagnostic.likelyCauses.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-xs font-medium text-foreground">Likely causes</p>
-                          <ul className="mt-1 list-disc list-inside text-xs text-muted-foreground">
-                            {result.diagnostic.likelyCauses.map((cause) => (
-                              <li key={`${result.testCase}-${cause}`}>{cause}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {result.diagnostic.suggestedFixes.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-xs font-medium text-foreground">Suggested fixes</p>
-                          <ul className="mt-1 list-disc list-inside text-xs text-muted-foreground">
-                            {result.diagnostic.suggestedFixes.map((fix) => (
-                              <li key={`${result.testCase}-${fix}`}>{fix}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
                   )}
                 </div>
               </motion.div>
@@ -863,7 +991,7 @@ const PracticeProblem = ({
       )}
 
       {isLoadingGapAnalysis && (
-        <Card className="border border-border/50 bg-gradient-card p-6">
+        <Card className="border border-border bg-card">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Analyzing your learning gap...
@@ -872,11 +1000,11 @@ const PracticeProblem = ({
       )}
 
       {gapAnalysis && (
-        <Card className="border border-border/50 bg-gradient-card p-6">
+        <Card className="border border-border bg-card">
           <div className="mb-4 flex items-center gap-2">
             <Brain className="h-4 w-4 text-primary" />
             <h3 className="font-semibold text-foreground">Adaptive Gap Analysis</h3>
-            <span className="rounded-md bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+            <span className="rounded-md border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
               confidence: {gapAnalysis.confidence}
             </span>
           </div>
@@ -884,9 +1012,7 @@ const PracticeProblem = ({
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Root Causes
-              </p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Root Causes</p>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 {gapAnalysis.rootCauses.map((cause) => (
                   <li key={cause}>{cause}</li>
@@ -894,9 +1020,7 @@ const PracticeProblem = ({
               </ul>
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Practice Plan
-              </p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Practice Plan</p>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 {gapAnalysis.practicePlan.map((item) => (
                   <li key={item}>{item}</li>
@@ -907,11 +1031,47 @@ const PracticeProblem = ({
         </Card>
       )}
 
-      {allTestsPassed && (
-        <Button className="h-11 w-full shadow-glow transition-transform hover:scale-[1.01]" size="lg">
-          <Send className="mr-2 h-4 w-4" />
-          Submit Solution
-        </Button>
+      {user && (
+        <Card className="border border-border bg-card">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Recent Submissions</h3>
+            {isLoadingSubmissions && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading
+              </span>
+            )}
+          </div>
+
+          {recentSubmissions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No submissions yet for this problem.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentSubmissions.map((submission) => (
+                <div
+                  key={submission.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs"
+                >
+                  <div className="text-muted-foreground">{new Date(submission.submittedAt).toLocaleString()}</div>
+                  <div className="inline-flex items-center gap-2">
+                    <span
+                      className={`rounded-md px-2 py-0.5 font-semibold ${
+                        submission.status === "accepted"
+                          ? "border border-[var(--success)] text-[var(--success)]"
+                          : "border border-[#f59e0b] text-[#f59e0b]"
+                      }`}
+                    >
+                      {submission.status}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {submission.passedTests}/{submission.totalTests} tests
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       )}
     </div>
   );

@@ -23,6 +23,15 @@ const asProvider = (
   return fallback;
 };
 
+const asSearchBackend = (
+  value: string | undefined,
+  fallback: "local" | "elasticsearch" = "local",
+): "local" | "elasticsearch" => {
+  if (value === "elasticsearch") return "elasticsearch";
+  if (value === "local") return "local";
+  return fallback;
+};
+
 export const serverConfig = {
   host: process.env.HOST ?? "0.0.0.0",
   port: toNumber(process.env.PORT, 4000),
@@ -34,11 +43,23 @@ export const serverConfig = {
   searchCacheMaxEntries: toNumber(process.env.SEARCH_CACHE_MAX_ENTRIES, 2_000),
   searchCacheRedisKeyPrefix: process.env.SEARCH_CACHE_REDIS_KEY_PREFIX ?? "search:",
   rateLimitMaxPerMinute: toNumber(process.env.RATE_LIMIT_MAX_PER_MINUTE, 300),
+  maxConcurrentSearchRequests: toNumber(process.env.MAX_CONCURRENT_SEARCH_REQUESTS, 120),
   maxConcurrentCodeExecRequests: toNumber(process.env.MAX_CONCURRENT_CODE_EXEC_REQUESTS, 36),
   maxConcurrentAiRequests: toNumber(process.env.MAX_CONCURRENT_AI_REQUESTS, 24),
   maxConcurrentVideoRequests: toNumber(process.env.MAX_CONCURRENT_VIDEO_REQUESTS, 28),
   maxConcurrentTechNewsRequests: toNumber(process.env.MAX_CONCURRENT_TECH_NEWS_REQUESTS, 18),
   maxConcurrentQuestionRequests: toNumber(process.env.MAX_CONCURRENT_QUESTION_REQUESTS, 20),
+  searchBackend: asSearchBackend(process.env.SEARCH_BACKEND, "local"),
+  elasticsearchUrl: process.env.ELASTICSEARCH_URL ?? "",
+  elasticsearchIndex: process.env.ELASTICSEARCH_INDEX ?? "learner-compass-catalog",
+  elasticsearchUnifiedIndex:
+    process.env.ELASTICSEARCH_UNIFIED_INDEX ??
+    `${process.env.ELASTICSEARCH_INDEX ?? "learner-compass-catalog"}-unified`,
+  elasticsearchApiKey: process.env.ELASTICSEARCH_API_KEY,
+  elasticsearchUsername: process.env.ELASTICSEARCH_USERNAME,
+  elasticsearchPassword: process.env.ELASTICSEARCH_PASSWORD,
+  elasticsearchRequestTimeoutMs: toNumber(process.env.ELASTICSEARCH_REQUEST_TIMEOUT_MS, 2_500),
+  elasticsearchSyncOnBoot: toBoolean(process.env.ELASTICSEARCH_SYNC_ON_BOOT, true),
   redisUrl: process.env.REDIS_URL,
   codeExecutionProvider: asProvider(process.env.CODE_EXEC_PROVIDER, "judge0"),
   codeExecutionFallbackProvider: asProvider(process.env.CODE_EXEC_FALLBACK_PROVIDER, "local-js"),

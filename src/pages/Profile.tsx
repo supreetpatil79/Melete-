@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, CheckCircle2, Code2, Download, Flame, MessageSquare, RefreshCw, ThumbsUp, Trophy } from "lucide-react";
+import { BookOpen, CheckCircle2, Code2, Download, Flame, MessageSquare, RefreshCw, Sparkles, ThumbsUp, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { useAppearance } from "@/context/AppearanceContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { getLearnerDnaSummary, getLearnerProfile } from "@/services/learnerProfileService";
 import {
   getTechViseLeaderboard,
@@ -31,6 +33,7 @@ const rankOf = (
 
 const ProfilePage = () => {
   const { user, isLoading } = useAuth();
+  const { liquidGlassEnabled, setLiquidGlassEnabled } = useAppearance();
   const navigate = useNavigate();
   const [refreshToken, setRefreshToken] = useState(0);
   const [knowledgeGraph, setKnowledgeGraph] = useState<LearningKnowledgeGraphResponse | null>(null);
@@ -55,6 +58,9 @@ const ProfilePage = () => {
   }, []);
 
   const snapshot = useMemo(() => {
+    // refreshToken intentionally invalidates the memo after manual/user focus refresh.
+    void refreshToken;
+
     if (!user) return null;
 
     const dna = getLearnerDnaSummary(user.id, user.branch);
@@ -296,6 +302,33 @@ const ProfilePage = () => {
             </div>
           </div>
         </motion.div>
+
+        <section className="mb-8">
+          <Card className="liquid-glass border border-border/70 bg-card/85 p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Experience Settings
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Tune premium visuals for a cleaner Apple-style interface in both light and dark mode.
+                </p>
+              </div>
+              <div className="flex min-w-[280px] items-center justify-between gap-4 rounded-2xl border border-border/80 bg-background/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Liquid Glass</p>
+                  <p className="text-xs text-muted-foreground">{liquidGlassEnabled ? "Enabled" : "Disabled"}</p>
+                </div>
+                <Switch
+                  checked={liquidGlassEnabled}
+                  onCheckedChange={setLiquidGlassEnabled}
+                  aria-label="Toggle liquid glass visual effects"
+                />
+              </div>
+            </div>
+          </Card>
+        </section>
 
         <section className="mb-8 grid gap-4 md:grid-cols-5">
           <Card className="border border-border bg-card p-4">

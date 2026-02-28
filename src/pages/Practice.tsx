@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  ArrowUpRight,
   CheckCircle2,
   Code2,
   Filter,
@@ -18,6 +19,11 @@ import {
   type PracticeTier,
   type PracticeTopic,
 } from "@/data/practiceTopics";
+import {
+  practiceProblemBank,
+  type PracticeBankProblem,
+  type PracticeProblemDifficulty,
+} from "@/data/practiceProblemBank";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +43,11 @@ import {
   recordPracticeExecution,
 } from "@/services/learnerProfileService";
 import { completeTodayMissionTask, getTodayMission } from "@/services/missionEngine";
+import {
+  fetchCourseQuestions,
+  type CourseQuestion,
+  type CourseQuestionDifficulty,
+} from "@/services/courseQuestionService";
 
 const sampleProblem = {
   id: "problem-1",
@@ -78,6 +89,7 @@ if (rawInput) {
 };
 
 type SortMode = "recommended" | "problems-desc" | "problems-asc";
+type InterviewDifficultyFilter = "all" | PracticeProblemDifficulty;
 
 const tierLabels: Array<{ value: PracticeTier | "all"; label: string }> = [
   { value: "all", label: "All tiers" },
@@ -85,6 +97,25 @@ const tierLabels: Array<{ value: PracticeTier | "all"; label: string }> = [
   { value: "intermediate", label: "Intermediate" },
   { value: "advanced", label: "Advanced" },
 ];
+
+const interviewDifficultyFilters: Array<{ value: InterviewDifficultyFilter; label: string }> = [
+  { value: "all", label: "All levels" },
+  { value: "Easy", label: "Easy" },
+  { value: "Medium", label: "Medium" },
+  { value: "Hard", label: "Hard" },
+];
+
+const difficultyTone: Record<PracticeProblemDifficulty, string> = {
+  Easy: "border-[var(--success)] bg-[var(--success)] text-white",
+  Medium: "border-[#f59e0b] bg-[#f59e0b] text-white",
+  Hard: "border-[var(--danger)] bg-[var(--danger)] text-white",
+};
+
+const courseDifficultyTone: Record<CourseQuestionDifficulty, string> = {
+  Beginner: "border-[var(--success)] bg-[var(--success)] text-white",
+  Intermediate: "border-[#f59e0b] bg-[#f59e0b] text-white",
+  Advanced: "border-[var(--danger)] bg-[var(--danger)] text-white",
+};
 
 const matchesBranch = (topic: PracticeTopic, selectedBranch: string): boolean => {
   if (!selectedBranch) return true;
@@ -154,15 +185,23 @@ const PracticePage = () => {
   const [selectedBranch, setSelectedBranch] = useState(user?.branch || "");
   const [showBranchFilter, setShowBranchFilter] = useState(false);
   const [selectedProblem, setSelectedProblem] = useState<PracticeTopic | null>(null);
+  const [selectedInterviewProblem, setSelectedInterviewProblem] = useState<PracticeBankProblem | null>(null);
   const [topicQuery, setTopicQuery] = useState("");
+  const [problemQuery, setProblemQuery] = useState("");
+  const [interviewDifficultyFilter, setInterviewDifficultyFilter] =
+    useState<InterviewDifficultyFilter>("all");
   const [tierFilter, setTierFilter] = useState<PracticeTier | "all">("all");
   const [sortMode, setSortMode] = useState<SortMode>("recommended");
+  const [apiQuestions, setApiQuestions] = useState<CourseQuestion[]>([]);
+  const [isLoadingApiQuestions, setIsLoadingApiQuestions] = useState(false);
+  const [apiQuestionError, setApiQuestionError] = useState<string | null>(null);
   const [dna, setDna] = useState(() =>
     user ? getLearnerDnaSummary(user.id, user.branch) : null,
   );
 
   const missionTaskId = searchParams.get("missionTaskId");
   const selectedTopicId = searchParams.get("topic");
+  const selectedInterviewProblemId = searchParams.get("problemId");
 
   useEffect(() => {
     if (!user) return;
@@ -174,8 +213,18 @@ const PracticePage = () => {
     const topic = practiceTopics.find((candidate) => candidate.id === selectedTopicId);
     if (topic) {
       setSelectedProblem(topic);
+      setSelectedInterviewProblem(null);
     }
   }, [selectedTopicId]);
+
+  useEffect(() => {
+    if (!selectedInterviewProblemId) return;
+    const candidate = practiceProblemBank.find((problem) => problem.id === selectedInterviewProblemId);
+    if (candidate) {
+      setSelectedInterviewProblem(candidate);
+      setSelectedProblem(null);
+    }
+  }, [selectedInterviewProblemId]);
 
   const mission = useMemo(
     () => (user ? getTodayMission(user.id, user.branch) : null),
@@ -203,6 +252,46 @@ const PracticePage = () => {
     }
     return map;
   }, [dna?.acceptanceRate, dna?.focusLanguage, dna?.streak, dna?.strongestLanguage, missionTopicIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      setIsLoadingApiQuestions(true);
+      setApiQuestionError(null);
+
+      try {
+        const keywords = problemQuery
+          .trim()
+          .toLowerCase()
+          .split(/[^a-z0-9+#.]+/g)
+          .filter((token) => token.length > 1)
+          .slice(0, 8);
+
+        const response = await fetchCourseQuestions({
+          branch: selectedBranch || user?.branch,
+          keywords,
+          limit: 12,
+        });
+
+        if (cancelled) return;
+        setApiQuestions(response.results.filter((item) => item.type === "coding"));
+      } catch (error) {
+        if (cancelled) return;
+        setApiQuestions([]);
+        const message = error instanceof Error ? error.message : "Unable to load coding question feed";
+        setApiQuestionError(message);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingApiQuestions(false);
+        }
+      }
+    }, 320);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [problemQuery, selectedBranch, user?.branch]);
 
   const filteredTopics = useMemo(() => {
     const normalizedQuery = topicQuery.trim().toLowerCase();
@@ -236,6 +325,32 @@ const PracticePage = () => {
     });
   }, [scoreByTopic, selectedBranch, sortMode, tierFilter, topicQuery]);
 
+  const filteredInterviewProblems = useMemo(() => {
+    const normalizedQuery = problemQuery.trim().toLowerCase();
+    const byDifficulty = practiceProblemBank.filter((problem) => {
+      if (interviewDifficultyFilter !== "all" && problem.difficulty !== interviewDifficultyFilter) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
+
+      const haystack = `${problem.title} ${problem.description} ${problem.tags.join(" ")} ${problem.difficulty}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+
+    const difficultyRank: Record<PracticeProblemDifficulty, number> = {
+      Easy: 1,
+      Medium: 2,
+      Hard: 3,
+    };
+
+    return byDifficulty.sort((left, right) => {
+      if (difficultyRank[left.difficulty] !== difficultyRank[right.difficulty]) {
+        return difficultyRank[left.difficulty] - difficultyRank[right.difficulty];
+      }
+      return left.title.localeCompare(right.title);
+    });
+  }, [interviewDifficultyFilter, problemQuery]);
+
   const recommendedTopics = useMemo(
     () =>
       practiceTopics
@@ -252,16 +367,19 @@ const PracticePage = () => {
   );
 
   const activeProblem = useMemo(
-    () =>
-      selectedProblem
-        ? {
-            ...sampleProblem,
-            id: `${sampleProblem.id}-${selectedProblem.id}`,
-            language: selectedProblem.language,
-            title: `${sampleProblem.title} (${selectedProblem.title})`,
-          }
-        : null,
-    [selectedProblem],
+    () => {
+      if (selectedInterviewProblem) {
+        return selectedInterviewProblem;
+      }
+      if (!selectedProblem) return null;
+      return {
+        ...sampleProblem,
+        id: `${sampleProblem.id}-${selectedProblem.id}`,
+        language: selectedProblem.language,
+        title: `${sampleProblem.title} (${selectedProblem.title})`,
+      };
+    },
+    [selectedInterviewProblem, selectedProblem],
   );
 
   const recentSession = user
@@ -286,8 +404,21 @@ const PracticePage = () => {
 
   const handleSelectProblem = (topic: PracticeTopic) => {
     setSelectedProblem(topic);
+    setSelectedInterviewProblem(null);
     const params = new URLSearchParams(searchParams);
     params.set("topic", topic.id);
+    params.delete("problemId");
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleSelectInterviewProblem = (problem: PracticeBankProblem) => {
+    setSelectedInterviewProblem(problem);
+    setSelectedProblem(null);
+
+    const params = new URLSearchParams(searchParams);
+    params.set("problemId", problem.id);
+    params.delete("topic");
+    params.delete("missionTaskId");
     setSearchParams(params, { replace: true });
   };
 
@@ -308,6 +439,8 @@ const PracticePage = () => {
 
   const handleResetFilters = () => {
     setTopicQuery("");
+    setProblemQuery("");
+    setInterviewDifficultyFilter("all");
     setTierFilter("all");
     setSortMode("recommended");
     setSelectedBranch(user?.branch ?? "");
@@ -315,8 +448,10 @@ const PracticePage = () => {
 
   const handleBackToProblems = () => {
     setSelectedProblem(null);
+    setSelectedInterviewProblem(null);
     const params = new URLSearchParams(searchParams);
     params.delete("topic");
+    params.delete("problemId");
     params.delete("missionTaskId");
     setSearchParams(params, { replace: true });
   };
@@ -384,27 +519,25 @@ const PracticePage = () => {
           </motion.div>
         )}
 
-        {selectedProblem && (
+        {activeProblem && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-12 border-b border-border pb-12"
+            className="relative left-1/2 right-1/2 mb-12 w-screen -translate-x-1/2 px-4 sm:px-6 lg:px-8"
           >
             <Button variant="outline" onClick={handleBackToProblems} className="mb-4">
-              ← Back to Problems
+              ← Back to Problem Library
             </Button>
-            {activeProblem && (
-              <PracticeProblem
-                {...activeProblem}
-                topicId={selectedProblem.id}
-                topicTitle={selectedProblem.title}
-                onExecutionComplete={handleExecutionComplete}
-              />
-            )}
+            <PracticeProblem
+              {...activeProblem}
+              topicId={selectedProblem?.id ?? selectedInterviewProblem?.topicId}
+              topicTitle={selectedProblem?.title ?? selectedInterviewProblem?.title}
+              onExecutionComplete={handleExecutionComplete}
+            />
           </motion.div>
         )}
 
-        {!selectedProblem && (
+        {!activeProblem && (
           <>
             {user && (
               <div className="mb-8 grid gap-4 lg:grid-cols-[1.1fr,1fr]">
@@ -434,7 +567,7 @@ const PracticePage = () => {
                         key={`recommended-${topic.id}`}
                         type="button"
                         onClick={() => handleSelectProblem(topic)}
-                        className="rounded-full border border-border bg-secondary px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/40"
+                        className="liquid-glass-button rounded-full border border-border bg-secondary px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/40"
                       >
                         {topic.title}
                       </button>
@@ -446,6 +579,142 @@ const PracticePage = () => {
                 </Card>
               </div>
             )}
+
+            <section className="mb-8 rounded-2xl border border-border/60 bg-gradient-card p-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-primary">LeetCode-Style Arena</p>
+                  <h2 className="mt-1 text-xl font-semibold text-foreground">Interview Problem Bank</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Curated Easy/Medium/Hard coding problems with test cases, execution, and submissions.
+                  </p>
+                </div>
+                <span className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+                  {filteredInterviewProblems.length} problems
+                </span>
+              </div>
+
+              <div className="mb-4 grid gap-3 md:grid-cols-[1.5fr,0.8fr]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={problemQuery}
+                    onChange={(event) => setProblemQuery(event.target.value)}
+                    placeholder="Search problem title, tag, or concept"
+                    className="pl-9"
+                  />
+                </div>
+                <Select
+                  value={interviewDifficultyFilter}
+                  onValueChange={(value) => setInterviewDifficultyFilter(value as InterviewDifficultyFilter)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {interviewDifficultyFilters.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {filteredInterviewProblems.length === 0 ? (
+                <Card className="border border-border bg-card p-5 text-center">
+                  <p className="text-sm text-muted-foreground">No interview problems match these filters.</p>
+                </Card>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredInterviewProblems.map((problem, index) => (
+                    <motion.button
+                      key={problem.id}
+                      type="button"
+                      onClick={() => handleSelectInterviewProblem(problem)}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.02 }}
+                      className="motion-interactive rounded-xl border border-border bg-background/85 p-4 text-left hover:-translate-y-1 hover:border-primary/30 hover:shadow-sm"
+                    >
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${difficultyTone[problem.difficulty]}`}>
+                          {problem.difficulty}
+                        </span>
+                        <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                          {problem.testCases.length} tests
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground">{problem.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{problem.description}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {problem.tags.slice(0, 3).map((tag) => (
+                          <span key={`${problem.id}-${tag}`} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="mb-8">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-foreground">API Problem Feed</h2>
+                {isLoadingApiQuestions && <span className="text-xs text-muted-foreground">Loading...</span>}
+              </div>
+
+              {apiQuestionError && (
+                <Card className="mb-3 border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
+                  {apiQuestionError}
+                </Card>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-2">
+                {apiQuestions.map((question) => {
+                  const mappedProblem = practiceProblemBank.find(
+                    (problem) => problem.title.toLowerCase() === question.title.toLowerCase(),
+                  );
+
+                  return (
+                    <Card key={question.id} className="border border-border/60 bg-card/90 p-4">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${courseDifficultyTone[question.difficulty]}`}>
+                          {question.difficulty}
+                        </span>
+                        <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                          {question.sourceLabel}
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground">{question.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{question.summary}</p>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {mappedProblem && (
+                          <Button size="sm" onClick={() => handleSelectInterviewProblem(mappedProblem)}>
+                            Solve in IDE
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={question.url} target="_blank" rel="noreferrer">
+                            Open Source
+                            <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+
+                {!isLoadingApiQuestions && apiQuestions.length === 0 && !apiQuestionError && (
+                  <Card className="border border-border bg-card p-4 text-sm text-muted-foreground">
+                    No coding questions available right now.
+                  </Card>
+                )}
+              </div>
+            </section>
 
             <div className="mb-6 grid gap-3 lg:grid-cols-[1.6fr,0.9fr,0.9fr]">
               <div className="relative">
@@ -511,7 +780,7 @@ const PracticePage = () => {
                         <button
                           key={branch.id}
                           onClick={() => setSelectedBranch(selectedBranch === branch.id ? "" : branch.id)}
-                          className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          className={`liquid-glass-button rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                             selectedBranch === branch.id
                               ? "bg-primary text-primary-foreground"
                               : "bg-secondary text-foreground hover:bg-secondary/80"
@@ -559,7 +828,7 @@ const PracticePage = () => {
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="group rounded-xl border border-border bg-gradient-card p-6 text-left shadow-card transition-all hover:border-primary/30 hover:shadow-lg"
+                      className="motion-card group rounded-xl border border-border bg-gradient-card p-6 text-left shadow-card hover:border-primary/30"
                     >
                       <div
                         className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg"

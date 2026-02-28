@@ -43,7 +43,7 @@ const LoginPage = () => {
 
       <div className="container relative max-w-md">
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-          <Card className="premium-outline border-border/70 bg-card/80 p-8 shadow-card backdrop-blur">
+          <Card className="liquid-glass premium-outline border-border/70 bg-card/80 p-8 shadow-card backdrop-blur">
             <div className="mb-7 text-center">
               <p className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />

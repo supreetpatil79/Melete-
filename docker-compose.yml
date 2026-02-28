@@ -1,9 +1,32 @@
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: learner-compass-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "${ELASTICSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}"
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 6s
+      retries: 10
+      start_period: 40s
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: learner-compass-backend
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -14,6 +37,15 @@ services:
       MAX_SEARCH_RESULTS: 50
       SEARCH_CACHE_TTL_MS: 30000
       SEARCH_CACHE_MAX_ENTRIES: 2000
+      SEARCH_BACKEND: ${SEARCH_BACKEND:-elasticsearch}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      ELASTICSEARCH_INDEX: ${ELASTICSEARCH_INDEX:-learner-compass-catalog}
+      ELASTICSEARCH_UNIFIED_INDEX: ${ELASTICSEARCH_UNIFIED_INDEX:-learner-compass-unified-search}
+      ELASTICSEARCH_API_KEY: ${ELASTICSEARCH_API_KEY:-}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME:-}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-}
+      ELASTICSEARCH_REQUEST_TIMEOUT_MS: ${ELASTICSEARCH_REQUEST_TIMEOUT_MS:-2500}
+      ELASTICSEARCH_SYNC_ON_BOOT: ${ELASTICSEARCH_SYNC_ON_BOOT:-true}
       REDIS_URL: ${REDIS_URL:-}
       CODE_EXEC_PROVIDER: ${CODE_EXEC_PROVIDER:-judge0}
       CODE_EXEC_API_URL: ${CODE_EXEC_API_URL:-}
@@ -63,3 +95,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  elasticsearch-data:

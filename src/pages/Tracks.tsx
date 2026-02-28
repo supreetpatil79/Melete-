@@ -1,15 +1,32 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Loader2, Search } from "lucide-react";
+import { Filter, Loader2 } from "lucide-react";
 import TrackCard from "../components/TrackCard";
 import CourseCard from "../components/CourseCard";
 import { useAuth } from "../context/AuthContext";
 import { getTracksByBranch } from "../services/trackService";
 import { branches } from "../data/branches";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { searchCatalog } from "@/services/searchService";
-import type { SearchHit } from "@/shared/catalogSearch";
+import {
+  autocompleteUnifiedCatalog,
+  searchUnifiedCatalog,
+  type UnifiedSearchHit,
+} from "@/services/searchService";
+import SearchBar from "@/components/SearchBar";
+
+const parseTrackIdFromUrl = (url: string): string | null => {
+  const match = url.match(/^\/tracks\/([^/?#]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+};
+
+const parseCourseRoute = (url: string): { trackId: string; courseId: string } | null => {
+  const match = url.match(/^\/tracks\/([^/?#]+)\/courses\/([^/?#]+)/);
+  if (!match?.[1] || !match?.[2]) return null;
+  return {
+    trackId: decodeURIComponent(match[1]),
+    courseId: decodeURIComponent(match[2]),
+  };
+};
 
 const TracksPage = () => {
   const { user } = useAuth();
@@ -20,7 +37,11 @@ const TracksPage = () => {
   const [searchTotal, setSearchTotal] = useState(0);
   const [searchTookMs, setSearchTookMs] = useState(0);
   const [searchSource, setSearchSource] = useState<"api" | "fallback">("api");
-  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [searchBackend, setSearchBackend] = useState<
+    "in-memory" | "elasticsearch" | "fallback-in-memory" | undefined
+  >(undefined);
+  const [searchResults, setSearchResults] = useState<UnifiedSearchHit[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<UnifiedSearchHit[]>([]);
 
   const allTracks = useMemo(() => getTracksByBranch(selectedBranch || undefined), [selectedBranch]);
   const trackById = useMemo(() => new Map(getTracksByBranch().map((track) => [track.id, track])), []);
@@ -29,9 +50,11 @@ const TracksPage = () => {
   useEffect(() => {
     if (!normalizedQuery) {
       setSearchResults([]);
+      setSearchSuggestions([]);
       setSearchTotal(0);
       setSearchTookMs(0);
       setIsSearching(false);
+      setSearchBackend(undefined);
       return;
     }
 
@@ -40,24 +63,43 @@ const TracksPage = () => {
 
     const timeoutId = window.setTimeout(async () => {
       try {
-        const response = await searchCatalog({
+        const response = await searchUnifiedCatalog({
           q: normalizedQuery,
-          branch: selectedBranch || undefined,
+          userId: user?.id,
           type: "all",
-          limit: 24,
+          limit: 10,
           signal: controller.signal,
         });
 
-        setSearchResults(response.results);
-        setSearchTotal(response.total);
+        const filteredResults =
+          selectedBranch.length > 0
+            ? response.results.filter((result) => {
+                if (result.type === "track") {
+                  const trackId = parseTrackIdFromUrl(result.url);
+                  const track = trackId ? trackById.get(trackId) : null;
+                  return track ? track.branches.includes(selectedBranch) : false;
+                }
+                if (result.type === "course") {
+                  const route = parseCourseRoute(result.url);
+                  const track = route ? trackById.get(route.trackId) : null;
+                  return track ? track.branches.includes(selectedBranch) : false;
+                }
+                return true;
+              })
+            : response.results;
+
+        setSearchResults(filteredResults);
+        setSearchTotal(filteredResults.length);
         setSearchTookMs(response.tookMs);
         setSearchSource(response.source);
+        setSearchBackend(response.backend);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         setSearchResults([]);
         setSearchTotal(0);
+        setSearchBackend(undefined);
       } finally {
         setIsSearching(false);
       }
@@ -67,7 +109,38 @@ const TracksPage = () => {
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [normalizedQuery, selectedBranch]);
+  }, [normalizedQuery, selectedBranch, trackById, user?.id]);
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      setSearchSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await autocompleteUnifiedCatalog({
+          q: normalizedQuery,
+          userId: user?.id,
+          type: "all",
+          limit: 8,
+          signal: controller.signal,
+        });
+        setSearchSuggestions(response.results);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setSearchSuggestions([]);
+      }
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [normalizedQuery, user?.id]);
 
   const trackResults = useMemo(() => {
     if (!normalizedQuery) {
@@ -76,11 +149,45 @@ const TracksPage = () => {
 
     return searchResults
       .filter((result) => result.type === "track")
-      .map((result) => trackById.get(result.trackId))
-      .filter(Boolean);
+      .map((result) => {
+        const trackId = parseTrackIdFromUrl(result.url);
+        return trackId ? trackById.get(trackId) : null;
+      })
+      .filter((track): track is ReturnType<typeof getTracksByBranch>[number] => Boolean(track));
   }, [allTracks, normalizedQuery, searchResults, trackById]);
 
-  const courseResults = useMemo(() => searchResults.filter((result) => result.type === "course"), [searchResults]);
+  const courseResults = useMemo(
+    () =>
+      searchResults
+        .filter((result) => result.type === "course")
+        .map((result) => {
+          const route = parseCourseRoute(result.url);
+          if (!route) return null;
+          const track = trackById.get(route.trackId);
+          const course = track?.courses.find((candidate) => candidate.id === route.courseId);
+          return {
+            result,
+            trackId: route.trackId,
+            courseId: route.courseId,
+            duration: course?.duration ?? "Flexible",
+            lessons: course?.lessons ?? 0,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
+    [searchResults, trackById],
+  );
+  const suggestionItems = useMemo(
+    () =>
+      searchSuggestions.map((suggestion) => ({
+        id: suggestion.id,
+        section: suggestion.section,
+        label: suggestion.title,
+        hint: suggestion.snippet,
+        highlightLabel: suggestion.highlights.title?.[0],
+        highlightHint: suggestion.highlights.description?.[0],
+      })),
+    [searchSuggestions],
+  );
   const currentBranch = branches.find((branch) => branch.id === selectedBranch);
 
   return (
@@ -92,16 +199,17 @@ const TracksPage = () => {
           {currentBranch && <p className="mt-2 text-sm font-medium text-primary">Showing tracks for {currentBranch.name}</p>}
         </motion.section>
 
-        <section className="mb-8 rounded-xl border border-border bg-card p-4">
+        <section className="liquid-glass mb-8 rounded-xl border border-border bg-card p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search tracks, courses, and skills"
+            <div className="flex-1">
+              <SearchBar
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="h-11 pl-10"
+                placeholder="Search tracks, courses, and skills"
+                suggestions={suggestionItems}
+                isLoading={isSearching}
+                onValueChange={setSearchQuery}
+                onSelectSuggestion={(suggestion) => setSearchQuery(suggestion.label)}
+                onSubmit={setSearchQuery}
               />
             </div>
 
@@ -124,7 +232,7 @@ const TracksPage = () => {
                   <button
                     key={branch.id}
                     onClick={() => setSelectedBranch(selectedBranch === branch.id ? "" : branch.id)}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`liquid-glass-button motion-interactive motion-button rounded-md border px-3 py-2 text-sm font-medium ${
                       selectedBranch === branch.id
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-background text-foreground hover:border-primary/50"
@@ -149,7 +257,7 @@ const TracksPage = () => {
               <>
                 <span>{searchTotal} matches</span>
                 <span>in {searchTookMs}ms</span>
-                <span>source: {searchSource}</span>
+                <span>source: {searchSource}{searchBackend ? `/${searchBackend}` : ""}</span>
               </>
             )}
           </div>
@@ -192,8 +300,8 @@ const TracksPage = () => {
                 >
                   <CourseCard
                     id={course.courseId ?? `${course.trackId}-${index}`}
-                    title={course.title}
-                    description={course.snippet || course.description}
+                    title={course.result.title}
+                    description={course.result.snippet || course.result.description}
                     duration={course.duration}
                     lessons={course.lessons ?? 0}
                     trackId={course.trackId}

@@ -397,27 +397,40 @@ export const collectTechNewsFeed = async ({
     target.push(article);
   };
 
-  for (const query of personalizedQueries) {
+  const [personalizedSettled, generalSettled] = await Promise.all([
+    Promise.allSettled(
+      personalizedQueries.map((query) =>
+        fetchHackerNews({
+          query,
+          relevance: "personalized",
+          timeoutMs: requestTimeoutMs,
+        }),
+      ),
+    ),
+    Promise.allSettled(
+      generalQueries.map((query) =>
+        fetchHackerNews({
+          query,
+          relevance: "general",
+          timeoutMs: requestTimeoutMs,
+        }),
+      ),
+    ),
+  ]);
+
+  for (const result of personalizedSettled) {
     if (personalized.length >= maxPersonalized) break;
-    const stories = await fetchHackerNews({
-      query,
-      relevance: "personalized",
-      timeoutMs: requestTimeoutMs,
-    });
-    for (const story of stories) {
+    if (result.status !== "fulfilled") continue;
+    for (const story of result.value) {
       if (personalized.length >= maxPersonalized) break;
       pushUnique(personalized, story);
     }
   }
 
-  for (const query of generalQueries) {
+  for (const result of generalSettled) {
     if (general.length >= maxGeneral) break;
-    const stories = await fetchHackerNews({
-      query,
-      relevance: "general",
-      timeoutMs: requestTimeoutMs,
-    });
-    for (const story of stories) {
+    if (result.status !== "fulfilled") continue;
+    for (const story of result.value) {
       if (general.length >= maxGeneral) break;
       pushUnique(general, story);
     }
